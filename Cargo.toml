@@ -3,6 +3,8 @@ name = "ravenlib"
 version = "1.0.0"
 authors = ["nicohman <nicohman@demenses.net>"]
 repository="https://git.sr.ht/~nicohman/ravenlib"
+description="Library for raven theme manager"
+license="GPL-3.0"
 [lib]
 name = "ravenlib"
 path = "src/lib.rs"
