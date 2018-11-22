@@ -1,3 +1,5 @@
+//! # ravenlib
+//! This powers [raven](https://git.sr.ht/~nicohman/raven), and provides an API for managing raven themes. Check raven for reasonably good example code.
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
