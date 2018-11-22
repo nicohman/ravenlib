@@ -1,0 +1,16 @@
+[package]
+name = "ravenlib"
+version = "1.0.0"
+authors = ["nicohman <nicohman@demenses.net>"]
+repository="https://git.sr.ht/~nicohman/ravenlib"
+[lib]
+name = "ravenlib"
+path = "src/lib.rs"
+[dependencies]
+serde = "1.0.66"
+serde_derive = "1.0"
+serde_json = "1.0"
+tar = "0.4"
+reqwest = "0.9.5"
+multipart = "0.15.2"
+dirs = "1.0"
