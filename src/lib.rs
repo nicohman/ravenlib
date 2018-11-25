@@ -142,7 +142,7 @@ pub mod config {
         let themes = ThemeStore {
             name: theme_name.clone(),
             enabled: Vec::new(),
-            options: options,
+            options: options.iter().map(|x| x.to_string()).collect(),
             screenshot: default_screen(),
             description: default_desc(),
             kv: Map::new()
@@ -182,7 +182,10 @@ pub mod config {
                 .is_ok()
             {
                 let theme_info = load_store(theme_name.as_str());
-                let opts: Vec<String> = theme_info.options;
+                let opts: Vec<ROption> = theme_info.options.iter().filter_map(|x| {
+                    let res = serde_json::from_str(x);
+                    res.ok()
+                }).map(|x: Option<ROption>| x.unwrap()).collect();
                 let new_theme = Theme {
                     name: theme_name,
                     options: opts,

@@ -22,7 +22,7 @@ pub struct ThemeStore {
 #[derive(Clone)]
 pub struct Theme {
     pub name: String,
-    pub options: Vec<String>,
+    pub options: Vec<ROption>,
     pub monitor: i32,
     pub enabled: Vec<String>,
     pub order: Vec<String>,
@@ -30,7 +30,41 @@ pub struct Theme {
     pub screenshot: String,
     pub description: String
 }
-
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")] 
+pub enum ROption {
+    #[serde(rename = "poly")]
+    Polybar,
+    #[serde(rename = "wm")]
+    OldI3,
+    I3,
+    Xres,
+    #[serde(rename = "xres_m")]
+    MergeXRes,
+    Pywal,
+    Wall,
+    Ncmpcpp,
+    Termite,
+    Script,
+    Bspwm,
+    Rofi,
+    Ranger,
+    Lemonbar,
+    Openbox,
+    Dunst,
+    VsCode,
+    #[serde(rename = "st_subltheme")]
+    OldSublTheme,
+    #[serde(rename = "st_scs")]
+    OldScs,
+    #[serde(rename = "st_tmtheme")]
+    OldTmTheme
+}
+impl ROption {
+    pub fn to_string(&self) -> String {
+        return serde_json::to_string(self).unwrap();
+    }
+}
 /// Methods for a loaded theme
 impl Theme {
     /// Loads options held within theme.json key-value storage
@@ -74,38 +108,35 @@ impl Theme {
     }
     /// Iterates through options and loads them with submethods
     pub fn load_all(&self) {
+        use crate::themes::ROption::*;
         let opt = &self.options;
         let mut i = 1;
         let len = opt.len();
         while i <= len {
             let ref option = opt[len - i];
-            match option.to_lowercase().as_ref() {
-                "poly" => self.load_poly(self.monitor),
-                "wm" => self.load_i3(true),
-                "i3" => self.load_i3(false),
-                "xres" => self.load_xres(false),
-                "xres_m" => self.load_xres(true),
-                "pywal" => self.load_pywal(),
-                "wall" => self.load_wall(),
-                "ncmpcpp" => self.load_ncm(),
-                "termite" => self.load_termite(),
-                "script" => self.load_script(),
-                "bspwm" => self.load_bspwm(),
-                "rofi" => self.load_rofi(),
-                "ranger" => self.load_ranger(),
-                "lemonbar" => self.load_lemon(),
-                "openbox" => self.load_openbox(),
-                "dunst" => self.load_dunst(),
-                "st_tmtheme" => self.convert_single("st_tmtheme"),
-                "st_scs" => self.convert_single("st_scs"),
-                "st_subltheme" => self.convert_single("st_subltheme"),
-                "vscode" => self.convert_single("vscode"),
-                "|" => {}
-                _ => println!("Unknown option"),
+            match option {
+                Polybar => self.load_poly(self.monitor),
+                OldI3 => self.load_i3(true),
+                I3 => self.load_i3(false),
+                Xres => self.load_xres(false),
+                MergeXRes => self.load_xres(true),
+                Pywal => self.load_pywal(),
+                Wall => self.load_wall(),
+                Ncmpcpp => self.load_ncm(),
+                Termite => self.load_termite(),
+                Script => self.load_script(),
+                Bspwm => self.load_bspwm(),
+                Rofi => self.load_rofi(),
+                Ranger => self.load_ranger(),
+                Lemonbar => self.load_lemon(),
+                Openbox => self.load_openbox(),
+                Dunst => self.load_dunst(),
+                OldTmTheme => self.convert_single("st_tmtheme"),
+                OldScs => self.convert_single("st_scs"),
+                OldSublTheme => self.convert_single("st_subltheme"),
+                VsCode => self.convert_single("vscode"),
             };
-            if !option.contains("|") {
-                println!("Loaded option {}", option);
-            }
+            println!("Loaded option {}", option.to_string());
             i += 1;
         }
         self.load_kv();
@@ -527,9 +558,10 @@ where
     let (theme_name, option, path) = (theme_name.into(), option.into(), path.into());
     let cur_theme = load_theme(theme_name.as_str()).unwrap();
     let cur_st = load_store(theme_name.as_str());
+    let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
     let mut new_themes = ThemeStore {
         name: theme_name.clone(),
-        options: cur_theme.options,
+        options: opts,
         enabled: cur_theme.enabled,
         screenshot: cur_st.screenshot,
         description: cur_st.description,
@@ -561,9 +593,10 @@ where
     let (theme_name, option) = (theme_name.into(), option.into());
     let cur_theme = load_theme(theme_name.as_str()).unwrap();
     let cur_st = load_store(theme_name.as_str());
+    let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
     let mut new_themes = ThemeStore {
         name: theme_name,
-        options: cur_theme.options,
+        options: opts,
         enabled: cur_theme.enabled,
         screenshot: cur_st.screenshot,
         description: cur_st.description,
