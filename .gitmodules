@@ -1,0 +1,3 @@
+[submodule "tests/raven"]
+	path = tests/raven
+	url = https://git.sr.ht/~nicohman/raven
