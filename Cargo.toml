@@ -1,6 +1,6 @@
 [package]
 name = "ravenlib"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["nicohman <nicohman@demenses.net>"]
 repository="https://git.sr.ht/~nicohman/ravenlib"
 description="Library for raven theme manager"
