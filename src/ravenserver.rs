@@ -7,21 +7,27 @@ use std::{
     fs::{File, OpenOptions},
     io,
     io::{Read, Write},
+    error::Error
 };
 use tar::{Archive, Builder};
 fn get_home() -> String {
     return String::from(home_dir().unwrap().to_str().unwrap());
 }
+/// Information on the currently logged in user
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserInfo {
+    /// The user's username
     name: String,
+    /// The login token to use when making requests
     token: String,
 }
+/// A response containing a theme's metadata
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MetaRes {
     screen: String,
     description: String,
 }
+/// Loads in info on the currently logged in user
 pub fn load_info() -> Result<UserInfo, String> {
     if fs::metadata(get_home() + "/.config/raven/ravenserver.json").is_ok() {
         let mut info = String::new();
@@ -39,6 +45,7 @@ pub fn load_info() -> Result<UserInfo, String> {
         Err("Not logged in".to_string())
     }
 }
+/// Exports a theme to a tar file, returning the file's name
 pub fn export<N>(theme_name: N, tmp: bool) -> String
 where
     N: Into<String>,
@@ -65,6 +72,7 @@ where
         ::std::process::exit(64);
     }
 }
+/// Imports a theme from a tar file
 pub fn import<N>(file_name: N)
 where
     N: Into<String>,
@@ -77,6 +85,7 @@ where
         println!("Imported theme.");
     }
 }
+/// Replaces and updates a stored userinfo file
 fn up_info(inf: UserInfo) {
     let winfpath = get_home() + "/.config/raven/~ravenserver.json";
     let infpath = get_home() + "/.config/raven/ravenserver.json";
@@ -90,15 +99,18 @@ fn up_info(inf: UserInfo) {
     fs::copy(&winfpath, &infpath).unwrap();
     fs::remove_file(&winfpath).unwrap();
 }
+/// Logs a user out by deleting the userinfo file
 pub fn logout() {
     fs::remove_file(get_home() + "/.config/raven/ravenserver.json")
         .expect("Couldn't delete user info file");
     println!("Successfully logged you out");
 }
+/// Gets the configured ThemeHub host
 pub fn get_host() -> String {
     let conf = get_config();
     conf.host
 }
+/// Makes a call to delete the currently logged in user. Requires password confirmation
 pub fn delete_user<N>(pass: N)
 where
     N: Into<String>,
@@ -137,6 +149,7 @@ where
         println!("{:?}", res);
     }
 }
+/// Creates a user with the given name and password. Pass and pass2 must match.
 pub fn create_user<N>(name: N, pass: N, pass2: N)
 where
     N: Into<String>,
@@ -170,6 +183,7 @@ where
         println!("Passwords need to match");
     }
 }
+/// Uploads a theme of the given name
 pub fn upload_theme<N>(name: N)
 where
     N: Into<String>,
@@ -220,6 +234,7 @@ where
         println!("That theme does not exist");
     }
 }
+/// Sends a request to get the metadata of a theme
 pub fn get_metadata<N>(name: N) -> Result<MetaRes, String>
 where
     N: Into<String>,
@@ -244,6 +259,7 @@ where
         Err("Could not fetch metadata".to_string())
     }
 }
+/// Publishes the metadata of a theme online, with the type and value given
 pub fn pub_metadata<N>(name: N, typem: N, value: N)
 where
     N: Into<String>,
@@ -284,6 +300,7 @@ where
         }
     }
 }
+/// Deletes a theme from the online repo
 pub fn unpublish_theme<N>(name: N)
 where
     N: Into<String>,
@@ -314,6 +331,7 @@ where
         println!("{:?}", res);
     }
 }
+/// Prints out a warning when installing a theme
 pub fn install_warning(esp: bool) {
     println!(
             "Warning: When you install themes from the online repo, there is some danger. Please evaluate the theme files before loading the theme, and if you find any malicious theme, please report it on the theme's page at {} and it will be removed.",
@@ -326,9 +344,11 @@ pub fn install_warning(esp: bool) {
     }
     println!("Thank you for helping keep the repo clean!");
 }
-pub fn check_tmp() -> bool {
+/// Checks if the /tmp directory exists
+fn check_tmp() -> bool {
     fs::metadata("/tmp").is_ok()
 }
+/// Downloads a theme from online. Force ignores all warning prompts.
 pub fn download_theme<N>(name: N, force: bool)
 where
     N: Into<String>,
@@ -430,6 +450,7 @@ where
         println!("{:?}", res);
     }
 }
+/// Logs a user in and writes userinfo file to disk
 pub fn login_user<N>(name: N, pass: N)
 where
     N: Into<String>,

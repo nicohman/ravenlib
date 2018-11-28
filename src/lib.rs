@@ -7,6 +7,7 @@ extern crate dirs;
 extern crate multipart;
 extern crate reqwest;
 extern crate tar;
+/// Interactions with online instances of ThemeHub
 pub mod ravenserver;
 use std::fs::DirEntry;
 /// Module for theme manipulation
@@ -15,8 +16,8 @@ pub mod themes;
 pub mod config {
     use crate::themes::*;
     use dirs::home_dir;
-    use std::{fs, fs::OpenOptions, io::Read, io::Write};
     use serde_json::value::Map;
+    use std::{fs, fs::OpenOptions, io::Read, io::Write};
     /// Returns home directory as string
     pub fn get_home() -> String {
         return String::from(home_dir().unwrap().to_str().unwrap());
@@ -91,7 +92,7 @@ pub mod config {
             || fs::metadata(get_home() + "/.config/raven/config.json").is_err()
             || fs::metadata(get_home() + "/.config/raven/themes").is_err()
     }
-    /// Updates the written config with a new config
+    /// Updates and replaces the stored config with a new config
     pub fn up_config(conf: Config) {
         OpenOptions::new()
             .create(true)
@@ -107,6 +108,7 @@ pub mod config {
         .unwrap();
         fs::remove_file(get_home() + "/.config/raven/~config.json").unwrap();
     }
+    /// Updates and replaces a stored ThemeStore with a new one
     pub fn up_theme(theme: ThemeStore) {
         let wthemepath = get_home() + "/.config/raven/themes/" + &theme.name + "/~theme.json";
         let themepath = get_home() + "/.config/raven/themes/" + &theme.name + "/theme.json";
@@ -120,7 +122,7 @@ pub mod config {
         fs::copy(&wthemepath, &themepath).unwrap();
         fs::remove_file(&wthemepath).unwrap();
     }
-
+    /// Converts a theme from the old pipe-delineated format to the new json format
     pub fn convert_theme<N>(theme_name: N)
     where
         N: Into<String>,
@@ -145,7 +147,7 @@ pub mod config {
             options: options.iter().map(|x| x.to_string()).collect(),
             screenshot: default_screen(),
             description: default_desc(),
-            kv: Map::new()
+            kv: Map::new(),
         };
         OpenOptions::new()
             .create(true)
@@ -166,48 +168,6 @@ pub mod config {
             .read_to_string(&mut st)
             .unwrap();
         serde_json::from_str(&st).unwrap()
-    }
-    /// Load in data for and run loading methods for a specific theme
-    pub fn load_theme<N>(theme_name: N) -> Result<Theme, &'static str>
-    where
-        N: Into<String>,
-    {
-        let theme_name = theme_name.into();
-
-        let conf = get_config();
-        let ent_res = fs::read_dir(get_home() + "/.config/raven/themes/" + &theme_name);
-        if ent_res.is_ok() {
-            println!("Found theme {}", theme_name);
-            if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json")
-                .is_ok()
-            {
-                let theme_info = load_store(theme_name.as_str());
-                let opts: Vec<ROption> = theme_info.options.iter().filter_map(|x| {
-                    let res = serde_json::from_str(x);
-                    res.ok()
-                }).map(|x: Option<ROption>| x.unwrap()).collect();
-                let new_theme = Theme {
-                    name: theme_name,
-                    options: opts,
-                    monitor: conf.monitors,
-                    enabled: theme_info.enabled,
-                    order: conf.polybar,
-                    kv: theme_info.kv,
-                    screenshot: theme_info.screenshot,
-                    description: theme_info.description
-                };
-                Ok(new_theme)
-            } else {
-                Err("Can't find Theme data")
-            }
-        } else {
-            println!("Theme does not exist.");
-            Err("Theme does not exist")
-        }
-    }
-    /// Loads all themes
-    pub fn load_themes() -> Vec<Theme> {
-        get_themes().iter().map(|x| load_theme(x.as_str())).filter(|x| x.is_ok()).map(|x| x.unwrap()).collect::<Vec<Theme>>()
     }
     /// Retrieve config settings from file
     pub fn get_config() -> Config {

@@ -28,10 +28,10 @@ pub struct Theme {
     pub order: Vec<String>,
     pub kv: Map<String, Value>,
     pub screenshot: String,
-    pub description: String
+    pub description: String,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(rename_all = "lowercase")] 
+#[serde(rename_all = "lowercase")]
 pub enum ROption {
     #[serde(rename = "poly")]
     Polybar,
@@ -58,7 +58,7 @@ pub enum ROption {
     #[serde(rename = "st_scs")]
     OldScs,
     #[serde(rename = "st_tmtheme")]
-    OldTmTheme
+    OldTmTheme,
 }
 impl ROption {
     pub fn to_string(&self) -> String {
@@ -100,8 +100,16 @@ impl Theme {
             .read_to_string(&mut value)
             .unwrap();
         let mut store = load_store(self.name.clone());
-        store.kv.insert(key.clone(),serde_json::Value::String(value.clone().trim().to_string()));
-        store.options = store.options.iter().filter(|x| x.as_str() != key.as_str()).map(|x|x.to_owned()).collect();
+        store.kv.insert(
+            key.clone(),
+            serde_json::Value::String(value.clone().trim().to_string()),
+        );
+        store.options = store
+            .options
+            .iter()
+            .filter(|x| x.as_str() != key.as_str())
+            .map(|x| x.to_owned())
+            .collect();
         up_theme(store);
         println!("Converted option {} to new key-value system", key);
         self.load_k(key, value);
@@ -322,7 +330,7 @@ impl Theme {
             value = value.trim_start_matches("sublt/").to_string();
             fs::copy(
                 get_home() + "/.config/raven/themes/" + &self.name + "/sublt/" + &value,
-                path.clone() + "/" + &value
+                path.clone() + "/" + &value,
             )
             .expect("Couldn't overwrite sublt theme");
         }
@@ -637,8 +645,66 @@ pub fn get_themes() -> Vec<String> {
         .collect::<Vec<String>>()
 }
 /// Changes a key-value option
-pub fn key_value<N, S, T>(key: N, value: S, theme: T) where N : Into<String>, S: Into<String>, T: Into<String> {
+pub fn key_value<N, S, T>(key: N, value: S, theme: T)
+where
+    N: Into<String>,
+    S: Into<String>,
+    T: Into<String>,
+{
     let mut store = load_store(theme.into());
-    store.kv.insert(key.into(), serde_json::Value::String(value.into()));
+    store
+        .kv
+        .insert(key.into(), serde_json::Value::String(value.into()));
     up_theme(store);
+}
+/// Load in data for a specific theme
+pub fn load_theme<N>(theme_name: N) -> Result<Theme, &'static str>
+where
+    N: Into<String>,
+{
+    let theme_name = theme_name.into();
+
+    let conf = get_config();
+    let ent_res = fs::read_dir(get_home() + "/.config/raven/themes/" + &theme_name);
+    if ent_res.is_ok() {
+        println!("Found theme {}", theme_name);
+        if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
+        {
+            let theme_info = load_store(theme_name.as_str());
+            let opts: Vec<ROption> = theme_info
+                .options
+                .iter()
+                .filter_map(|x| {
+                    let res = serde_json::from_str(x);
+                    res.ok()
+                })
+                .map(|x: Option<ROption>| x.unwrap())
+                .collect();
+            let new_theme = Theme {
+                name: theme_name,
+                options: opts,
+                monitor: conf.monitors,
+                enabled: theme_info.enabled,
+                order: conf.polybar,
+                kv: theme_info.kv,
+                screenshot: theme_info.screenshot,
+                description: theme_info.description,
+            };
+            Ok(new_theme)
+        } else {
+            Err("Can't find Theme data")
+        }
+    } else {
+        println!("Theme does not exist.");
+        Err("Theme does not exist")
+    }
+}
+/// Loads all themes
+pub fn load_themes() -> Vec<Theme> {
+    get_themes()
+        .iter()
+        .map(|x| load_theme(x.as_str()))
+        .filter(|x| x.is_ok())
+        .map(|x| x.unwrap())
+        .collect::<Vec<Theme>>()
 }
