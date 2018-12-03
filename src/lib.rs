@@ -7,8 +7,11 @@ extern crate dirs;
 extern crate multipart;
 extern crate reqwest;
 extern crate tar;
+#[macro_use]
+extern crate error_chain;
 /// Interactions with online instances of ThemeHub
 pub mod ravenserver;
+pub mod error;
 use std::fs::DirEntry;
 /// Module for theme manipulation
 pub mod themes;

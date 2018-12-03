@@ -9,6 +9,7 @@ use std::{
     io::{Read, Write},
     error::Error
 };
+use error::*;
 use tar::{Archive, Builder};
 fn get_home() -> String {
     return String::from(home_dir().unwrap().to_str().unwrap());
@@ -28,25 +29,18 @@ pub struct MetaRes {
     description: String,
 }
 /// Loads in info on the currently logged in user
-pub fn load_info() -> Result<UserInfo, String> {
+pub fn load_info() -> Result<UserInfo> {
     if fs::metadata(get_home() + "/.config/raven/ravenserver.json").is_ok() {
         let mut info = String::new();
-        File::open(get_home() + "/.config/raven/ravenserver.json")
-            .expect("Couldn't read user info")
-            .read_to_string(&mut info)
-            .unwrap();
-        let un = serde_json::from_str(&info);
-        if un.is_ok() {
-            Ok(un.unwrap())
-        } else {
-            Err("User info file in incorrect state".to_string())
-        }
+        File::open(get_home() + "/.config/raven/ravenserver.json")?
+            .read_to_string(&mut info)?;
+        return Ok(serde_json::from_str(&info)?);
     } else {
-        Err("Not logged in".to_string())
+        Err(ErrorKind::Server(RavenServerErrorKind::NotLoggedIn.into()).into())
     }
 }
 /// Exports a theme to a tar file, returning the file's name
-pub fn export<N>(theme_name: N, tmp: bool) -> String
+pub fn export<N>(theme_name: N, tmp: bool) -> Result<String>
 where
     N: Into<String>,
 {
@@ -57,69 +51,67 @@ where
             tname = tname + "/tmp/";
         }
         tname = tname + &theme_name.to_string() + ".tar";
-        let tb = File::create(&tname).unwrap();
+        let tb = File::create(&tname)?;
         let mut b = Builder::new(tb);
         b.append_dir_all(
             theme_name.to_string(),
             get_home() + "/.config/raven/themes/" + &theme_name,
-        )
-        .expect("Couldn't add theme to archive");
-        b.into_inner().expect("Couldn't write tar archive");
+        )?;
+        b.into_inner()?;
         println!("Wrote theme to {}", tname);
-        tname
+        Ok(tname)
     } else {
         println!("Theme does not exist");
-        ::std::process::exit(64);
+        Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
 }
 /// Imports a theme from a tar file
-pub fn import<N>(file_name: N)
+pub fn import<N>(file_name: N) -> Result<()>
 where
     N: Into<String>,
 {
     let fname: String = file_name.into();
-    if fs::metadata(&fname).is_ok() {
-        let mut arch = Archive::new(File::open(fname).unwrap());
-        arch.unpack(get_home() + "/.config/raven/themes/")
-            .expect("Couldn't unpack theme archive");
-        println!("Imported theme.");
-    }
+    let fd = File::open(fname)?;
+    let mut arch = Archive::new(fd);
+    arch.unpack(get_home() + "/.config/raven/themes/")?;
+    println!("Imported theme.");
+    Ok(())
 }
 /// Replaces and updates a stored userinfo file
-fn up_info(inf: UserInfo) {
+fn up_info(inf: UserInfo) -> Result<()>{
     let winfpath = get_home() + "/.config/raven/~ravenserver.json";
     let infpath = get_home() + "/.config/raven/ravenserver.json";
     OpenOptions::new()
         .create(true)
         .write(true)
-        .open(&winfpath)
-        .expect("Couldn't open user info file")
-        .write_all(serde_json::to_string(&inf).unwrap().as_bytes())
+        .open(&winfpath)?
+        .write_all(serde_json::to_string(&inf)?.as_bytes())
         .expect("Couldn't write to user info file");
-    fs::copy(&winfpath, &infpath).unwrap();
-    fs::remove_file(&winfpath).unwrap();
+    fs::copy(&winfpath, &infpath)?;
+    fs::remove_file(&winfpath)?;
+    Ok(())
 }
 /// Logs a user out by deleting the userinfo file
-pub fn logout() {
-    fs::remove_file(get_home() + "/.config/raven/ravenserver.json")
-        .expect("Couldn't delete user info file");
+pub fn logout() -> Result<()> {
+    fs::remove_file(get_home() + "/.config/raven/ravenserver.json")?;
     println!("Successfully logged you out");
+    Ok(())
 }
 /// Gets the configured ThemeHub host
-pub fn get_host() -> String {
+pub fn get_host() -> Result<String> {
     let conf = get_config();
-    conf.host
+    Ok(conf.host)
 }
 /// Makes a call to delete the currently logged in user. Requires password confirmation
-pub fn delete_user<N>(pass: N)
+pub fn delete_user<N>(pass: N) -> Result<()>
 where
     N: Into<String>,
 {
-    let info = load_info().unwrap();
+    let info = load_info()?;
     let client = reqwest::Client::new();
     let res = client
         .post(
-            &(get_host()
+            &(get_host()?
                 + "/themes/users/delete/"
                 + &info.name
                 + "?token="
@@ -127,30 +119,30 @@ where
                 + "&pass="
                 + &pass.into()),
         )
-        .send();
-    if res.is_ok() {
-        let res = res.unwrap();
+        .send()?;
+
         if res.status().is_success() {
             println!("Successfully deleted user and all owned themes. Logging out");
-            logout();
+            logout()?;
+            Ok(())
         } else {
             if res.status() == reqwest::StatusCode::FORBIDDEN {
                 println!("You are trying to delete a user you are not. Bad!");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
             } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
                 println!("You're trying to delete a user w/o providing authentication credentials");
+                Err(ErrorKind::Server(RavenServerErrorKind::NotLoggedIn.into()).into())
             } else if res.status() == reqwest::StatusCode::NOT_FOUND {
                 println!("You're trying to delete a user that doesn't exist");
+                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(info.name).into()).into())
             } else {
                 println!("Server error. Code {:?}", res.status());
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    } else {
-        println!("Something went wrong with deleting your user. Error message:");
-        println!("{:?}", res);
-    }
 }
-/// Creates a user with the given name and password. Pass and pass2 must match.
-pub fn create_user<N>(name: N, pass: N, pass2: N)
+/// Creates a user with the given name and password. Pass and pass2 must match, or function will return false.
+pub fn create_user<N>(name: N, pass: N, pass2: N) -> Result<bool>
 where
     N: Into<String>,
 {
@@ -158,119 +150,108 @@ where
     if pass == pass2 {
         let client = reqwest::Client::new();
         let res = client
-            .post(&(get_host() + "/themes/user/create?name=" + &name + "&pass=" + &pass))
-            .send();
-        if res.is_ok() {
-            let res = res.unwrap();
+            .post(&(get_host()? + "/themes/user/create?name=" + &name + "&pass=" + &pass))
+            .send()?;
             if res.status().is_success() {
                 println!("Successfully created user. Sign in with `raven login [name] [password]`");
+                Ok(true)
             } else {
                 if res.status() == reqwest::StatusCode::FORBIDDEN {
                     println!("User already created. Pick a different name!");
+                    Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
                 } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
                     println!(
                             "Either your username or password was too long. The limit is 20 characters for username, and 100 for password."
                         );
+                        Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
                 } else {
                     println!("Server error. Code {:?}", res.status());
+                    Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
                 }
             }
-        } else {
-            println!("Something went wrong with creating a user. Error message:");
-            println!("{:?}", res);
-        }
+
     } else {
         println!("Passwords need to match");
+        return Ok(false);
     }
 }
-/// Uploads a theme of the given name
-pub fn upload_theme<N>(name: N)
+/// Uploads a theme of the given name. Returns true if the theme was created, or false if it was just updated.
+pub fn upload_theme<N>(name: N) -> Result<bool>
 where
     N: Into<String>,
 {
     let name = name.into();
     let info = load_info().unwrap();
     if fs::metadata(get_home() + "/.config/raven/themes/" + &name).is_ok() {
-        let tname = export(name.as_str(), true);
-        if fs::metadata(name.clone() + ".tar").is_ok() {
+        let tname = export(name.as_str(), true)?;
             let form = reqwest::multipart::Form::new()
-                .file("fileupload", &tname)
-                .unwrap();
+                .file("fileupload", &tname)?;
             let res = reqwest::Client::new()
-                .post(&(get_host() + "/themes/upload?name=" + &name + "&token=" + &info.token))
+                .post(&(get_host()? + "/themes/upload?name=" + &name + "&token=" + &info.token))
                 .multipart(form)
-                .send();
-            if res.is_ok() {
-                let res = res.unwrap();
+                .send()?;
                 if res.status().is_success() {
+                    let mut up = false;
                     if res.status() == reqwest::StatusCode::CREATED {
                         println!("Theme successfully uploaded.");
-                    } else {
-                        println!("Theme successfully updated.");
+                        up = true;
                     }
                     let theme_st = load_store(name.as_str());
                     if theme_st.screenshot != default_screen() {
-                        pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot);
+                        pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot)?;
                     }
-                    pub_metadata(name, "description".into(), theme_st.description);
-                    fs::remove_file(tname).unwrap();
+                    pub_metadata(name, "description".into(), theme_st.description)?;
+                    fs::remove_file(tname)?;
+                    Ok(up)
                 } else {
                     if res.status() == reqwest::StatusCode::FORBIDDEN {
                         println!("That theme already exists, and you are not its owner.");
+                        Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
                     } else {
                         println!("Server error. Code {:?}", res.status());
+                        Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
                     }
                 }
-            } else {
-                println!("Something went wrong with uploading the theme. Error message:");
-                println!("{:?}", res);
-            }
-        } else {
-            println!(
-                    "Something has gone wrong. Check if the theme file was written to current directory."
-                );
-        }
     } else {
         println!("That theme does not exist");
+        Err(ErrorKind::InvalidThemeName(name).into())
     }
 }
 /// Sends a request to get the metadata of a theme
-pub fn get_metadata<N>(name: N) -> Result<MetaRes, String>
+pub fn get_metadata<N>(name: N) -> Result<MetaRes>
 where
     N: Into<String>,
 {
+    let name = name.into();
     let client = reqwest::Client::new();
-    let res = client
-        .get(&(get_host() + "/themes/meta/" + &name.into()))
-        .send();
-    if res.is_ok() {
-        let mut res = res.unwrap();
+    let mut res = client
+        .get(&(get_host()? + "/themes/meta/" + &name))
+        .send()?;
         if res.status().is_success() {
-            let meta: MetaRes = res.json().expect("Couldn't deserialize metadata responnse");
+            let meta: MetaRes = res.json()?;
             Ok(meta)
         } else {
             if res.status() == reqwest::StatusCode::NOT_FOUND {
-                Err("Theme not found".to_string())
+                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
             } else {
-                Err("Internal Server Error".to_string())
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    } else {
-        Err("Could not fetch metadata".to_string())
-    }
+
 }
 /// Publishes the metadata of a theme online, with the type and value given
-pub fn pub_metadata<N>(name: N, typem: N, value: N)
+pub fn pub_metadata<N>(name: N, typem: N, value: N) -> Result<()>
 where
     N: Into<String>,
 {
-    let info = load_info().unwrap();
+    let info = load_info()?;
+    let name = name.into();
     let client = reqwest::Client::new();
     let res = client
         .post(
-            &(get_host()
+            &(get_host()?
                 + "/themes/meta/"
-                + &name.into()
+                + &name
                 + "?typem="
                 + &typem.into()
                 + "&value="
@@ -278,64 +259,66 @@ where
                 + "&token="
                 + &info.token),
         )
-        .send();
-    if res.is_ok() {
-        let res = res.unwrap();
+        .send()?;
         if res.status().is_success() {
             println!("Successfully updated theme metadata");
+            Ok(())
         } else {
             if res.status() == reqwest::StatusCode::NOT_FOUND {
                 println!("That theme hasn't been published");
+                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
             } else if res.status() == reqwest::StatusCode::FORBIDDEN {
                 println!("Can't edit the metadata of a theme that isn't yours");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
             } else if res.status() == reqwest::StatusCode::PRECONDITION_FAILED {
                 println!("That isn't a valid metadata type");
+                Err(ErrorKind::Server(RavenServerErrorKind::PreConditionFailed("metadata type".to_string()).into()).into())
             } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
                 println!(
                         "Your description or screenshot url was more than 200 characters long. Please shorten it."
                     );
+                Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
             } else {
                 println!("Server error. Code {:?}", res.status());
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    }
 }
 /// Deletes a theme from the online repo
-pub fn unpublish_theme<N>(name: N)
+pub fn unpublish_theme<N>(name: N) -> Result<()>
 where
     N: Into<String>,
 {
     let name = name.into();
-    let info = load_info().unwrap();
+    let info = load_info()?;
     let client = reqwest::Client::new();
     let res = client
-        .post(&(get_host() + "/themes/delete/" + &name + "?token=" + &info.token))
-        .send();
-    if res.is_ok() {
-        let res = res.unwrap();
+        .post(&(get_host()? + "/themes/delete/" + &name + "?token=" + &info.token))
+        .send()?;
         if res.status().is_success() {
             println!("Successfully unpublished theme");
+            Ok(())
         } else {
             if res.status() == reqwest::StatusCode::NOT_FOUND {
                 println!("Can't unpublish a nonexistent theme");
+                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
             } else if res.status() == reqwest::StatusCode::FORBIDDEN {
                 println!("Can't unpublish a theme that isn't yours");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
             } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
                 println!("Did not provide a valid login token");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
             } else {
                 println!("Server error. Code {:?}", res.status());
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    } else {
-        println!("Something went wrong with unpublishing the theme. Error message: ");
-        println!("{:?}", res);
-    }
 }
 /// Prints out a warning when installing a theme
 pub fn install_warning(esp: bool) {
     println!(
             "Warning: When you install themes from the online repo, there is some danger. Please evaluate the theme files before loading the theme, and if you find any malicious theme, please report it on the theme's page at {} and it will be removed.",
-            get_host()
+            get_host().unwrap()
         );
     if esp {
         println!(
@@ -349,7 +332,7 @@ fn check_tmp() -> bool {
     fs::metadata("/tmp").is_ok()
 }
 /// Downloads a theme from online. Force ignores all warning prompts.
-pub fn download_theme<N>(name: N, force: bool)
+pub fn download_theme<N>(name: N, force: bool) -> Result<bool>
 where
     N: Into<String>,
 {
@@ -361,34 +344,31 @@ where
     tname = tname + &name + ".tar";
     println!("{}", tname);
     let client = reqwest::Client::new();
-    let res = client.get(&(get_host() + "/themes/repo/" + &name)).send();
-    if res.is_ok() {
-        let mut res = res.unwrap();
+    let mut res = client.get(&(get_host()? + "/themes/repo/" + &name)).send()?;
         if res.status().is_success() {
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(&tname)
-                .expect("Couldn't write theme file");
-            res.copy_to(&mut file).expect("Couldn't pipe to archive");
+                .open(&tname)?;
+            res.copy_to(&mut file)?;
             println!("Downloaded theme.");
             if res.status() == reqwest::StatusCode::ALREADY_REPORTED && !force {
                 print!(
                         "This theme has recently been reported, and has not been approved by an admin. It is not advisable to install this theme. Are you sure you would like to continue? (y/n)"
                     );
-                io::stdout().flush().unwrap();
+                io::stdout().flush()?;
                 let mut r = String::new();
-                io::stdin().read_line(&mut r).unwrap();
+                io::stdin().read_line(&mut r)?;
                 if r.trim() == "y" {
                     println!(
                             "Continuing. Please look carefully at the theme files in ~/.config/raven/themes/{} before loading this theme.",
                             name
                         );
-                    import(tname.as_str());
+                    import(tname.as_str())?;
                     println!("Imported theme. Removing archive.");
-                    fs::remove_file(&tname).unwrap();
+                    fs::remove_file(&tname)?;
                     println!("Downloading metadata.");
-                    let meta = get_metadata(name.as_str()).unwrap();
+                    let meta = get_metadata(name.as_str())?;
                     let mut st = load_store(name.as_str());
                     st.screenshot = meta.screen;
                     st.description = meta.description;
@@ -406,9 +386,11 @@ where
                             install_warning(false);
                         }
                     }
+                    Ok(true)
                 } else {
                     println!("Removing downloaded archive.");
-                    fs::remove_file(&tname).unwrap();
+                    fs::remove_file(&tname)?;
+                    Ok(false)
                 }
             } else {
                 if res.status() == reqwest::StatusCode::ALREADY_REPORTED {
@@ -416,11 +398,11 @@ where
                             "This theme has recently been reported, and has not been approved by an admin. It is not advisable to install this theme. Continuing because of --force."
                         );
                 }
-                import(tname.as_str());
+                import(tname.as_str())?;
                 println!("Imported theme. Removing archive.");
-                fs::remove_file(tname).unwrap();
+                fs::remove_file(tname)?;
                 println!("Downloading metadata.");
-                let meta = get_metadata(name.as_str()).unwrap();
+                let meta = get_metadata(name.as_str())?;
                 let mut st = load_store(name.as_str());
                 st.screenshot = meta.screen;
                 st.description = meta.description;
@@ -437,43 +419,39 @@ where
                         install_warning(false);
                     }
                 }
+                Ok(true)
             }
         } else {
             if res.status() == reqwest::StatusCode::NOT_FOUND {
                 println!("Theme has not been uploaded");
+                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
             } else {
                 println!("Server error. Code {:?}", res.status());
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    } else {
-        println!("Something went wrong with downloading the theme. Error message:");
-        println!("{:?}", res);
-    }
 }
 /// Logs a user in and writes userinfo file to disk
-pub fn login_user<N>(name: N, pass: N)
+pub fn login_user<N>(name: N, pass: N) -> Result<()>
 where
     N: Into<String>,
 {
     let client = reqwest::Client::new();
-    let res = client
-        .get(&(get_host() + "/themes/user/login?name=" + &name.into() + "&pass=" + &pass.into()))
-        .send();
-    if res.is_ok() {
-        let mut res = res.unwrap();
+    let mut res = client
+        .get(&(get_host()? + "/themes/user/login?name=" + &name.into() + "&pass=" + &pass.into()))
+        .send()?;
         if res.status().is_success() {
             println!("Successfully signed in. Writing login info to disk.");
             let info = res.json().unwrap();
-            up_info(info);
+            up_info(info)?;
+            Ok(())
         } else {
             if res.status() == reqwest::StatusCode::FORBIDDEN {
                 println!("Wrong login info. Try again!");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
             } else {
                 println!("Server error. Code {:?}", res.status());
+                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
             }
         }
-    } else {
-        println!("Something went wrong with logging in. Error message:");
-        println!("{:?}", res);
-    }
 }
