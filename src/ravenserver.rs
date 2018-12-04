@@ -99,7 +99,7 @@ pub fn logout() -> Result<()> {
 }
 /// Gets the configured ThemeHub host
 pub fn get_host() -> Result<String> {
-    let conf = get_config();
+    let conf = get_config()?;
     Ok(conf.host)
 }
 /// Makes a call to delete the currently logged in user. Requires password confirmation
@@ -196,7 +196,7 @@ where
                         println!("Theme successfully uploaded.");
                         up = true;
                     }
-                    let theme_st = load_store(name.as_str());
+                    let theme_st = load_store(name.as_str())?;
                     if theme_st.screenshot != default_screen() {
                         pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot)?;
                     }
@@ -369,10 +369,10 @@ where
                     fs::remove_file(&tname)?;
                     println!("Downloading metadata.");
                     let meta = get_metadata(name.as_str())?;
-                    let mut st = load_store(name.as_str());
+                    let mut st = load_store(name.as_str())?;
                     st.screenshot = meta.screen;
                     st.description = meta.description;
-                    up_theme(st);
+                    up_theme(st)?;
                     if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script")
                         .is_ok()
                         || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar")
@@ -403,10 +403,10 @@ where
                 fs::remove_file(tname)?;
                 println!("Downloading metadata.");
                 let meta = get_metadata(name.as_str())?;
-                let mut st = load_store(name.as_str());
+                let mut st = load_store(name.as_str())?;
                 st.screenshot = meta.screen;
                 st.description = meta.description;
-                up_theme(st);
+                up_theme(st)?;
                 if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script").is_ok()
                     || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar")
                         .is_ok()

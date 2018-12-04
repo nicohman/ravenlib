@@ -21,6 +21,7 @@ pub mod config {
     use dirs::home_dir;
     use serde_json::value::Map;
     use std::{fs, fs::OpenOptions, io::Read, io::Write};
+    use error::*;
     /// Returns home directory as string
     pub fn get_home() -> String {
         return String::from(home_dir().unwrap().to_str().unwrap());
@@ -61,20 +62,21 @@ pub mod config {
             }
         }
     }
-    /// Check to see if there are themes still using the old format
-    pub fn check_themes() {
-        let entries = get_themes();
+    /// Check to see if there are themes still using the old format, and convert them if so.
+    pub fn check_themes() -> Result<()> {
+        let entries = get_themes()?;
         for entry in entries {
             if fs::metadata(get_home() + "/.config/raven/themes/" + &entry + "/theme").is_ok() {
-                convert_theme(entry);
+                convert_theme(entry)?;
             }
         }
+        Ok(())
     }
     /// Create base raven directories and config file(s)
-    pub fn init() {
+    pub fn init() -> Result<()> {
         if fs::metadata(get_home() + "/.config/raven/config").is_err() {
-            fs::create_dir(get_home() + "/.config/raven").unwrap();
-            fs::create_dir(get_home() + "/.config/raven/themes").unwrap();
+            fs::create_dir(get_home() + "/.config/raven")?;
+            fs::create_dir(get_home() + "/.config/raven/themes")?;
         } else {
             println!(
                     "The config file format has changed. Please check ~/.config/raven/config.json to reconfigure raven."
@@ -83,11 +85,11 @@ pub mod config {
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
-            .open(get_home() + "/.config/raven/config.json")
-            .unwrap();
-        let default = serde_json::to_string(&Config::default()).unwrap();
-        file.write_all(default.as_bytes()).unwrap();
-        println!("Correctly initialized base config. Please run again to use raven.");
+            .open(get_home() + "/.config/raven/config.json")?;
+        let default = serde_json::to_string(&Config::default())?;
+        file.write_all(default.as_bytes())?;
+        println!("Correctly initialized base config and directory structure.");
+        Ok(())
     }
     /// Checks to see if base config/directories need to be initialized
     pub fn check_init() -> bool {
@@ -96,37 +98,34 @@ pub mod config {
             || fs::metadata(get_home() + "/.config/raven/themes").is_err()
     }
     /// Updates and replaces the stored config with a new config
-    pub fn up_config(conf: Config) {
+    pub fn up_config(conf: Config) -> Result<Config>{
         OpenOptions::new()
             .create(true)
             .write(true)
-            .open(get_home() + "/.config/raven/~config.json")
-            .expect("Couldn't open last theme file")
-            .write_all(serde_json::to_string(&conf).unwrap().as_bytes())
-            .expect("Couldn't write to last theme file");
+            .open(get_home() + "/.config/raven/~config.json")?
+            .write_all(serde_json::to_string(&conf)?.as_bytes())?;
         fs::copy(
             get_home() + "/.config/raven/~config.json",
             get_home() + "/.config/raven/config.json",
-        )
-        .unwrap();
-        fs::remove_file(get_home() + "/.config/raven/~config.json").unwrap();
+        )?;
+        fs::remove_file(get_home() + "/.config/raven/~config.json")?;
+        Ok(conf)
     }
     /// Updates and replaces a stored ThemeStore with a new one
-    pub fn up_theme(theme: ThemeStore) {
+    pub fn up_theme(theme: ThemeStore) -> Result<ThemeStore> {
         let wthemepath = get_home() + "/.config/raven/themes/" + &theme.name + "/~theme.json";
         let themepath = get_home() + "/.config/raven/themes/" + &theme.name + "/theme.json";
         OpenOptions::new()
             .create(true)
             .write(true)
-            .open(&wthemepath)
-            .expect("Couldn't open theme file")
-            .write_all(serde_json::to_string(&theme).unwrap().as_bytes())
-            .expect("Couldn't write to theme file");
-        fs::copy(&wthemepath, &themepath).unwrap();
-        fs::remove_file(&wthemepath).unwrap();
+            .open(&wthemepath)?
+            .write_all(serde_json::to_string(&theme)?.as_bytes())?;
+        fs::copy(&wthemepath, &themepath)?;
+        fs::remove_file(&wthemepath)?;
+        Ok(theme)
     }
     /// Converts a theme from the old pipe-delineated format to the new json format
-    pub fn convert_theme<N>(theme_name: N)
+    pub fn convert_theme<N>(theme_name: N) -> Result<ThemeStore>
     where
         N: Into<String>,
     {
@@ -135,15 +134,14 @@ pub mod config {
         let otp = get_home() + "/.config/raven/themes/" + &theme_name + "/theme";
         fs::File::open(&otp)
             .expect("Couldn't read theme")
-            .read_to_string(&mut theme)
-            .unwrap();
+            .read_to_string(&mut theme)?;
         let options = theme
             .split('|')
             .map(|x| String::from(String::from(x).trim()))
             .filter(|x| x.len() > 0)
             .filter(|x| x != "|")
             .collect::<Vec<String>>();
-        fs::remove_file(otp).unwrap();
+        fs::remove_file(otp)?;
         let themes = ThemeStore {
             name: theme_name.clone(),
             enabled: Vec::new(),
@@ -155,63 +153,59 @@ pub mod config {
         OpenOptions::new()
             .create(true)
             .write(true)
-            .open(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json")
-            .expect("Can't open theme.json")
-            .write_all(serde_json::to_string(&themes).unwrap().as_bytes())
-            .unwrap();
+            .open(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json")?
+            .write_all(serde_json::to_string(&themes).unwrap().as_bytes())?;
+        Ok(themes)
     }
-    pub fn load_store<N>(theme: N) -> ThemeStore
+    pub fn load_store<N>(theme: N) -> Result<ThemeStore>
     where
         N: Into<String>,
     {
         let theme = theme.into();
         let mut st = String::new();
-        fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")
-            .unwrap()
-            .read_to_string(&mut st)
-            .unwrap();
-        serde_json::from_str(&st).unwrap()
+        fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")?
+            .read_to_string(&mut st)?;
+        Ok(serde_json::from_str(&st)?)
     }
     /// Retrieve config settings from file
-    pub fn get_config() -> Config {
+    pub fn get_config() -> Result<Config> {
         let mut conf = String::new();
-        fs::File::open(get_home() + "/.config/raven/config.json")
-            .expect("Couldn't read config")
-            .read_to_string(&mut conf)
-            .unwrap();
-        serde_json::from_str(&conf).expect("Couldn't read config file")
+        fs::File::open(get_home() + "/.config/raven/config.json")?
+            .read_to_string(&mut conf)?;
+        Ok(serde_json::from_str(&conf)?)
     }
 }
 /// Ravend control
 pub mod daemon {
+    use error::*;
     use std::process::Command;
+    use std::process::Child;
     /// Starts ravend
-    pub fn start_daemon() {
-        Command::new("sh")
+    pub fn start_daemon() -> Result<Child> {
+        let child = Command::new("sh")
             .arg("-c")
             .arg("ravend")
-            .spawn()
-            .expect("Couldn't start daemon.");
+            .spawn()?;
         println!("Started cycle daemon.");
+        Ok(child)
     }
     /// Stops ravend
-    pub fn stop_daemon() {
+    pub fn stop_daemon() -> Result<()> {
         Command::new("pkill")
             .arg("-SIGKILL")
             .arg("ravend")
-            .output()
-            .expect("Couldn't stop daemon.");
+            .output()?;
         println!("Stopped cycle daemon.");
+        Ok(())
     }
     /// Checks if the ravend daemon is running
-    pub fn check_daemon() -> bool {
+    pub fn check_daemon() -> Result<bool> {
         let out = Command::new("ps")
             .arg("aux")
-            .output()
-            .expect("Couldn't find daemon");
+            .output()?;
         let form_out = String::from_utf8_lossy(&out.stdout);
         let line_num = form_out.lines().filter(|x| x.contains("ravend")).count();
-        line_num > 0
+        Ok(line_num > 0)
     }
 
 }
