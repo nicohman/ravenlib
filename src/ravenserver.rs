@@ -328,7 +328,7 @@ pub fn install_warning(esp: bool) {
     println!("Thank you for helping keep the repo clean!");
 }
 /// Checks if the /tmp directory exists
-fn check_tmp() -> bool {
+pub fn check_tmp() -> bool {
     fs::metadata("/tmp").is_ok()
 }
 /// Downloads a theme from online. Force ignores all warning prompts.
