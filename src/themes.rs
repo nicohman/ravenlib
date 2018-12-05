@@ -128,35 +128,35 @@ impl Theme {
         while i <= len {
             let ref option = opt[len - i];
             match option {
-                Polybar => self.load_poly(self.monitor)?,
-                OldI3 => self.load_i3(true)?,
-                I3 => self.load_i3(false)?,
-                Xres => self.load_xres(false)?,
-                MergeXRes => self.load_xres(true)?,
-                Pywal => self.load_pywal()?,
-                Wall => self.load_wall()?,
+                Polybar => self.load_poly(self.monitor).unwrap(),
+                OldI3 => self.load_i3(true).unwrap(),
+                I3 => self.load_i3(false).unwrap(),
+                Xres => self.load_xres(false).unwrap(),
+                MergeXRes => self.load_xres(true).unwrap(),
+                Pywal => self.load_pywal().unwrap(),
+                Wall => self.load_wall().unwrap(),
                 Ncmpcpp => {
-                    self.load_ncm()?;
+                    self.load_ncm().unwrap();
                 }
-                Termite => self.load_termite()?,
-                Script => self.load_script()?,
-                Bspwm => self.load_bspwm()?,
-                Rofi => self.load_rofi()?,
-                Ranger => self.load_ranger()?,
-                Lemonbar => self.load_lemon()?,
-                Openbox => self.load_openbox()?,
-                Dunst => self.load_dunst()?,
+                Termite => self.load_termite().unwrap(),
+                Script => self.load_script().unwrap(),
+                Bspwm => self.load_bspwm().unwrap(),
+                Rofi => self.load_rofi().unwrap(),
+                Ranger => self.load_ranger().unwrap(),
+                Lemonbar => self.load_lemon().unwrap(),
+                Openbox => self.load_openbox().unwrap(),
+                Dunst => self.load_dunst().unwrap(),
                 OldTmTheme => {
-                    self.convert_single("st_tmtheme")?;
+                    self.convert_single("st_tmtheme").unwrap();
                 }
                 OldScs => {
-                    self.convert_single("st_scs")?;
+                    self.convert_single("st_scs").unwrap();
                 }
                 OldSublTheme => {
-                    self.convert_single("st_subltheme")?;
+                    self.convert_single("st_subltheme").unwrap();
                 }
                 VsCode => {
-                    self.convert_single("vscode")?;
+                    self.convert_single("vscode").unwrap();
                 }
             };
             println!("Loaded option {}", option.to_string());
