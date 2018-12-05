@@ -127,6 +127,7 @@ impl Theme {
         let len = opt.len();
         while i <= len {
             let ref option = opt[len - i];
+            println!("Loading option {}", option.to_string());
             match option {
                 Polybar => self.load_poly(self.monitor).unwrap(),
                 OldI3 => self.load_i3(true).unwrap(),
@@ -148,16 +149,16 @@ impl Theme {
                 Dunst => self.load_dunst().unwrap(),
                 OldTmTheme => {
                     self.convert_single("st_tmtheme").unwrap();
-                }
+                },
                 OldScs => {
                     self.convert_single("st_scs").unwrap();
-                }
+                },
                 OldSublTheme => {
                     self.convert_single("st_subltheme").unwrap();
-                }
+                },
                 VsCode => {
                     self.convert_single("vscode").unwrap();
-                }
+                },
             };
             println!("Loaded option {}", option.to_string());
             i += 1;
@@ -647,12 +648,12 @@ where
         println!("Found theme {}", theme_name);
         if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
         {
-            let theme_info = load_store(theme_name.as_str())?;
+            let theme_info = load_store(theme_name.as_str()).unwrap();
             let opts: Vec<ROption> = theme_info
                 .options
                 .iter()
                 .filter_map(|x| {
-                    let res = serde_json::from_str(x);
+                    let res = serde_json::from_value(json!(x));
                     res.ok()
                 })
                 .map(|x: Option<ROption>| x.unwrap())

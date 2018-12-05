@@ -1,5 +1,6 @@
 //! # ravenlib
 //! This powers [raven](https://git.sr.ht/~nicohman/raven), and provides an API for managing raven themes. Check raven for reasonably good example code.
+#[macro_use]
 extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
@@ -165,7 +166,8 @@ pub mod config {
         let mut st = String::new();
         fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")?
             .read_to_string(&mut st)?;
-        Ok(serde_json::from_str(&st)?)
+        let result = serde_json::from_str(&st)?;
+        Ok(result)
     }
     /// Retrieve config settings from file
     pub fn get_config() -> Result<Config> {
