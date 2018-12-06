@@ -82,6 +82,7 @@ pub mod config {
             println!(
                     "The config file format has changed. Please check ~/.config/raven/config.json to reconfigure raven."
                 );
+
         }
         let mut file = OpenOptions::new()
             .create(true)
@@ -89,6 +90,7 @@ pub mod config {
             .open(get_home() + "/.config/raven/config.json")?;
         let default = serde_json::to_string(&Config::default())?;
         file.write_all(default.as_bytes())?;
+        #[cfg(feature = "logging")]
         println!("Correctly initialized base config and directory structure.");
         Ok(())
     }
@@ -188,6 +190,7 @@ pub mod daemon {
             .arg("-c")
             .arg("ravend")
             .spawn()?;
+        #[cfg(feature = "logging")]
         println!("Started cycle daemon.");
         Ok(child)
     }
@@ -197,6 +200,7 @@ pub mod daemon {
             .arg("-SIGKILL")
             .arg("ravend")
             .output()?;
+        #[cfg(feature = "logging")]
         println!("Stopped cycle daemon.");
         Ok(())
     }

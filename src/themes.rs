@@ -87,11 +87,13 @@ impl Theme {
             "st_subltheme" => self.load_sublt("st_subltheme", v.as_str())?,
             "vscode" => self.load_vscode(v.as_str())?,
             _ => {
+                #[cfg(feature = "logging")]
                 println!("Unrecognized key {}", k);
                 ok = false;
                 false
             }
         };
+        #[cfg(feature = "logging")]
         println!("Loaded key option {}", k);
         Ok(ok)
     }
@@ -116,6 +118,7 @@ impl Theme {
             .map(|x| x.to_owned())
             .collect();
         up_theme(store)?;
+        #[cfg(feature = "logging")]
         println!("Converted option {} to new key-value system", key);
         Ok(self.load_k(key, value)?)
     }
@@ -127,6 +130,7 @@ impl Theme {
         let len = opt.len();
         while i <= len {
             let ref option = opt[len - i];
+            #[cfg(feature = "logging")]
             println!("Loading option {}", option.to_string());
             match option {
                 Polybar => self.load_poly(self.monitor).unwrap(),
@@ -160,10 +164,12 @@ impl Theme {
                     self.convert_single("vscode").unwrap();
                 },
             };
+            #[cfg(feature = "logging")]
             println!("Loaded option {}", option.to_string());
             i += 1;
         }
         self.load_kv();
+        #[cfg(feature = "logging")]
         println!("Loaded all options for theme {}", self.name);
         Ok(())
     }
@@ -288,6 +294,7 @@ impl Theme {
         let path1 = get_home() + "/.config/Code/User";
         let path2 = get_home() + "/.config/Code - OSS/User";
         if fs::metadata(&path1).is_err() && fs::metadata(&path2).is_err() {
+            #[cfg(feature = "logging")]
             println!(
                 "Couldn't find neither .config/Code nor .config/Code - OSS. Do you have VSCode installed? \
                 Skipping."
@@ -311,6 +318,7 @@ impl Theme {
         let stype = &stype.into();
         let path = get_home() + "/.config/sublime-text-3/Packages/User";
         if fs::metadata(&path).is_err() {
+            #[cfg(feature = "logging")]
             println!(
                 "Couldn't find {}. Do you have sublime text 3 installed? \
                  Skipping.",
@@ -350,6 +358,7 @@ impl Theme {
                 get_home() + "/.ncmpcpp/config",
             )?;
         } else {
+            #[cfg(feature = "logging")]
             println!(
                 "Couldn't detect a ncmpcpp config directory in ~/.config/ncmppcp or ~/.ncmpcpp."
             );
@@ -474,6 +483,7 @@ where
         let mut conf = get_config()?;
         conf.editing = theme_name.to_string();
         up_config(conf)?;
+        #[cfg(feature = "logging")]
         println!("You are now editing the theme {}", &theme_name);
         Ok(theme_name)
     } else {
@@ -505,6 +515,7 @@ where
         run_theme(&load_theme(last.trim())?)?;
         Ok(())
     } else {
+        #[cfg(feature = "logging")]
         println!("No last theme saved. Cannot refresh.");
         Err(ErrorKind::InvalidThemeName(last).into())
     }
@@ -589,6 +600,7 @@ where
     let mut i = 0;
     while i < new_themes.options.len() {
         if &new_themes.options[i] == &option {
+            #[cfg(feature = "logging")]
             println!("Found option {}", option);
             found = true;
             new_themes.options.remove(i);
@@ -599,6 +611,7 @@ where
         up_theme(new_themes)?;
         Ok(())
     } else {
+        #[cfg(feature = "logging")]
         println!("Couldn't find option {}", option);
         Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
@@ -645,6 +658,7 @@ where
     let conf = get_config()?;
     let ent_res = fs::read_dir(get_home() + "/.config/raven/themes/" + &theme_name);
     if ent_res.is_ok() {
+        #[cfg(feature = "logging")]
         println!("Found theme {}", theme_name);
         if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
         {
@@ -673,6 +687,7 @@ where
             Err(ErrorKind::InvalidThemeName(theme_name).into())
         }
     } else {
+        #[cfg(feature = "logging")]
         println!("Theme does not exist.");
         Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
