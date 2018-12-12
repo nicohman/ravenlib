@@ -195,7 +195,7 @@ where
     N: Into<String>,
 {
     let name = name.into();
-    let info = load_info().unwrap();
+    let info = load_info()?;
     if fs::metadata(get_home() + "/.config/raven/themes/" + &name).is_ok() {
         let tname = export(name.as_str(), true)?;
             let form = reqwest::multipart::Form::new()
@@ -480,7 +480,7 @@ where
         if res.status().is_success() {
             #[cfg(feature = "logging")]
             println!("Successfully signed in. Writing login info to disk.");
-            let info = res.json().unwrap();
+            let info = res.json()?;
             up_info(info)?;
             Ok(())
         } else {

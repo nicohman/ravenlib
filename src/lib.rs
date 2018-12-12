@@ -157,7 +157,7 @@ pub mod config {
             .create(true)
             .write(true)
             .open(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json")?
-            .write_all(serde_json::to_string(&themes).unwrap().as_bytes())?;
+            .write_all(serde_json::to_string(&themes)?.as_bytes())?;
         Ok(themes)
     }
     pub fn load_store<N>(theme: N) -> Result<ThemeStore>

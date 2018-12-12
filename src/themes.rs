@@ -396,10 +396,8 @@ impl Theme {
         }
         let mut app = String::new();
         if isw {
-            fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/wm")
-                .unwrap()
-                .read_to_string(&mut app)
-                .unwrap();
+            fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/wm")?
+                .read_to_string(&mut app)?;
         } else {
             fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/i3")?
                 .read_to_string(&mut app)?;
@@ -662,7 +660,7 @@ where
         println!("Found theme {}", theme_name);
         if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
         {
-            let theme_info = load_store(theme_name.as_str()).unwrap();
+            let theme_info = load_store(theme_name.as_str())?;
             let opts: Vec<ROption> = theme_info
                 .options
                 .iter()
