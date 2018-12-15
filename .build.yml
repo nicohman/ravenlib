@@ -1,0 +1,22 @@
+image: archlinux
+packages:
+  - cargo
+  - cmake
+  - fontconfig
+  - rsync
+  - python3
+  - git
+sources:
+  - https://git.sr.ht/~nicohman/ravenlib
+tasks:
+  - update: |
+      cd ravenlib/tests
+      git checkout master
+      git pull
+  - test: |
+      cd ravenlib
+      cargo test
+triggers:
+  - action: email
+    condition: failure
+    to: Nico Hickman <nicohman@demenses.net>
