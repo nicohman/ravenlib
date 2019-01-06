@@ -1,5 +1,12 @@
-# ravenlib
-This is the crate for the library portion of [raven](https://git.sr.ht/~nicohman/raven). Docs are [here](https://docs.rs/ravenlib), an explanation of all available options is available in the raven README and you can find example code in raven itself.
+# ravenlib [![](https://img.shields.io/crates/v/ravenlib.svg?style=flat-square)](https://crates.io/crates/ravenlib)
+
+This is the crate for the library portion of [raven](https://git.sr.ht/~nicohman/raven), a CLI theme manager for linux. You can get it on [crates.io](https://crates.io/crates/ravenlib).
+
+## Documentation
+
+- You can find the documentation [here](https://docs.rs/ravenlib), and more specific documentation about raven's general workings on [this wiki](https://man.sr.ht/~nicohman/raven), including a list of of available options and 
+
+- Of course, [raven](https://git.sr.ht/~nicohman/raven) itself offers good examples of usage for pretty much all ravenlib features.
 
 ## Contributing and Issues
 
