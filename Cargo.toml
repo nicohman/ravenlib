@@ -1,6 +1,6 @@
 [package]
 name = "ravenlib"
-version = "1.2.2"
+version = "1.2.3"
 authors = ["nicohman <nicohman@demenses.net>"]
 repository="https://git.sr.ht/~nicohman/ravenlib"
 description="Library for raven theme manager"
@@ -22,4 +22,8 @@ dirs = "1.0"
 error-chain = "0.12.0"
 [dev-dependencies]
 time = "0.1"
+human-panic = "1.0.1"
 structopt = "0.2.10"
+[features]
+default = ["logging"]
+logging = []
