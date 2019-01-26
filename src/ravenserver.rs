@@ -1,15 +1,15 @@
 use config::*;
 use dirs::home_dir;
+use error::*;
 use reqwest;
 use serde_json;
 use std::{
+    error::Error,
     fs,
     fs::{File, OpenOptions},
     io,
     io::{Read, Write},
-    error::Error
 };
-use error::*;
 use tar::{Archive, Builder};
 fn get_home() -> String {
     return String::from(home_dir().unwrap().to_str().unwrap());
@@ -32,8 +32,7 @@ pub struct MetaRes {
 pub fn load_info() -> Result<UserInfo> {
     if fs::metadata(get_home() + "/.config/raven/ravenserver.json").is_ok() {
         let mut info = String::new();
-        File::open(get_home() + "/.config/raven/ravenserver.json")?
-            .read_to_string(&mut info)?;
+        File::open(get_home() + "/.config/raven/ravenserver.json")?.read_to_string(&mut info)?;
         return Ok(serde_json::from_str(&info)?);
     } else {
         Err(ErrorKind::Server(RavenServerErrorKind::NotLoggedIn.into()).into())
@@ -81,7 +80,7 @@ where
     Ok(())
 }
 /// Replaces and updates a stored userinfo file
-fn up_info(inf: UserInfo) -> Result<()>{
+fn up_info(inf: UserInfo) -> Result<()> {
     let winfpath = get_home() + "/.config/raven/~ravenserver.json";
     let infpath = get_home() + "/.config/raven/ravenserver.json";
     OpenOptions::new()
@@ -125,64 +124,67 @@ where
         )
         .send()?;
 
-        if res.status().is_success() {
+    if res.status().is_success() {
+        #[cfg(feature = "logging")]
+        println!("Successfully deleted user and all owned themes. Logging out");
+        logout()?;
+        Ok(())
+    } else {
+        if res.status() == reqwest::StatusCode::FORBIDDEN {
             #[cfg(feature = "logging")]
-            println!("Successfully deleted user and all owned themes. Logging out");
-            logout()?;
-            Ok(())
+            println!("You are trying to delete a user you are not. Bad!");
+            Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
+        } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+            #[cfg(feature = "logging")]
+            println!("You're trying to delete a user w/o providing authentication credentials");
+            Err(ErrorKind::Server(RavenServerErrorKind::NotLoggedIn.into()).into())
+        } else if res.status() == reqwest::StatusCode::NOT_FOUND {
+            #[cfg(feature = "logging")]
+            println!("You're trying to delete a user that doesn't exist");
+            Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(info.name).into()).into())
         } else {
-            if res.status() == reqwest::StatusCode::FORBIDDEN {
-                #[cfg(feature = "logging")]
-                println!("You are trying to delete a user you are not. Bad!");
-                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-            } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-                #[cfg(feature = "logging")]
-                println!("You're trying to delete a user w/o providing authentication credentials");
-                Err(ErrorKind::Server(RavenServerErrorKind::NotLoggedIn.into()).into())
-            } else if res.status() == reqwest::StatusCode::NOT_FOUND {
-                #[cfg(feature = "logging")]
-                println!("You're trying to delete a user that doesn't exist");
-                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(info.name).into()).into())
-            } else {
-                #[cfg(feature = "logging")]
-                println!("Server error. Code {:?}", res.status());
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-            }
+            #[cfg(feature = "logging")]
+            println!("Server error. Code {:?}", res.status());
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
         }
+    }
 }
 /// Creates a user with the given name and password. Pass and pass2 must match, or function will return false.
-pub fn create_user<N>(name: N, pass: N, pass2: N) -> Result<bool>
-where
-    N: Into<String>,
-{
+pub fn create_user(
+    name: impl Into<String>,
+    pass: impl Into<String>,
+    pass2: impl Into<String>,
+) -> Result<bool> {
     let (name, pass, pass2): (String, String, String) = (name.into(), pass.into(), pass2.into());
     if pass == pass2 {
         let client = reqwest::Client::new();
         let res = client
             .post(&(get_host()? + "/themes/user/create?name=" + &name + "&pass=" + &pass))
             .send()?;
-            if res.status().is_success() {
+        if res.status().is_success() {
+            #[cfg(feature = "logging")]
+            println!("Successfully created user. Sign in with `raven login [name] [password]`");
+            Ok(true)
+        } else {
+            if res.status() == reqwest::StatusCode::FORBIDDEN {
                 #[cfg(feature = "logging")]
-                println!("Successfully created user. Sign in with `raven login [name] [password]`");
-                Ok(true)
-            } else {
-                if res.status() == reqwest::StatusCode::FORBIDDEN {
-                    #[cfg(feature = "logging")]
-                    println!("User already created. Pick a different name!");
-                    Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-                } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-                    #[cfg(feature = "logging")]
-                    println!(
+                println!("User already created. Pick a different name!");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
+            } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+                #[cfg(feature = "logging")]
+                println!(
                             "Either your username or password was too long. The limit is 20 characters for username, and 100 for password."
                         );
-                        Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
-                } else {
-                    #[cfg(feature = "logging")]
-                    println!("Server error. Code {:?}", res.status());
-                    Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-                }
+                Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
+            } else {
+                #[cfg(feature = "logging")]
+                println!("Server error. Code {:?}", res.status());
+                Err(
+                    ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into())
+                        .into(),
+                )
             }
-
+        }
     } else {
         #[cfg(feature = "logging")]
         println!("Passwords need to match");
@@ -198,37 +200,39 @@ where
     let info = load_info()?;
     if fs::metadata(get_home() + "/.config/raven/themes/" + &name).is_ok() {
         let tname = export(name.as_str(), true)?;
-            let form = reqwest::multipart::Form::new()
-                .file("fileupload", &tname)?;
-            let res = reqwest::Client::new()
-                .post(&(get_host()? + "/themes/upload?name=" + &name + "&token=" + &info.token))
-                .multipart(form)
-                .send()?;
-                if res.status().is_success() {
-                    let mut up = false;
-                    if res.status() == reqwest::StatusCode::CREATED {
-                        #[cfg(feature = "logging")]
-                        println!("Theme successfully uploaded.");
-                        up = true;
-                    }
-                    let theme_st = load_store(name.as_str())?;
-                    if theme_st.screenshot != default_screen() {
-                        pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot)?;
-                    }
-                    pub_metadata(name, "description".into(), theme_st.description)?;
-                    fs::remove_file(tname)?;
-                    Ok(up)
-                } else {
-                    if res.status() == reqwest::StatusCode::FORBIDDEN {
-                        #[cfg(feature = "logging")]
-                        println!("That theme already exists, and you are not its owner.");
-                        Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-                    } else {
-                        #[cfg(feature = "logging")]
-                        println!("Server error. Code {:?}", res.status());
-                        Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-                    }
-                }
+        let form = reqwest::multipart::Form::new().file("fileupload", &tname)?;
+        let res = reqwest::Client::new()
+            .post(&(get_host()? + "/themes/upload?name=" + &name + "&token=" + &info.token))
+            .multipart(form)
+            .send()?;
+        if res.status().is_success() {
+            let mut up = false;
+            if res.status() == reqwest::StatusCode::CREATED {
+                #[cfg(feature = "logging")]
+                println!("Theme successfully uploaded.");
+                up = true;
+            }
+            let theme_st = load_store(name.as_str())?;
+            if theme_st.screenshot != default_screen() {
+                pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot)?;
+            }
+            pub_metadata(name, "description".into(), theme_st.description)?;
+            fs::remove_file(tname)?;
+            Ok(up)
+        } else {
+            if res.status() == reqwest::StatusCode::FORBIDDEN {
+                #[cfg(feature = "logging")]
+                println!("That theme already exists, and you are not its owner.");
+                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
+            } else {
+                #[cfg(feature = "logging")]
+                println!("Server error. Code {:?}", res.status());
+                Err(
+                    ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into())
+                        .into(),
+                )
+            }
+        }
     } else {
         #[cfg(feature = "logging")]
         println!("That theme does not exist");
@@ -245,17 +249,16 @@ where
     let mut res = client
         .get(&(get_host()? + "/themes/meta/" + &name))
         .send()?;
-        if res.status().is_success() {
-            let meta: MetaRes = res.json()?;
-            Ok(meta)
+    if res.status().is_success() {
+        let meta: MetaRes = res.json()?;
+        Ok(meta)
+    } else {
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
         } else {
-            if res.status() == reqwest::StatusCode::NOT_FOUND {
-                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
-            } else {
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-            }
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
         }
-
+    }
 }
 /// Publishes the metadata of a theme online, with the type and value given
 pub fn pub_metadata<N>(name: N, typem: N, value: N) -> Result<()>
@@ -278,35 +281,38 @@ where
                 + &info.token),
         )
         .send()?;
-        if res.status().is_success() {
+    if res.status().is_success() {
+        #[cfg(feature = "logging")]
+        println!("Successfully updated theme metadata");
+        Ok(())
+    } else {
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
             #[cfg(feature = "logging")]
-            println!("Successfully updated theme metadata");
-            Ok(())
-        } else {
-            if res.status() == reqwest::StatusCode::NOT_FOUND {
-                #[cfg(feature = "logging")]
-                println!("That theme hasn't been published");
-                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
-            } else if res.status() == reqwest::StatusCode::FORBIDDEN {
-                #[cfg(feature = "logging")]
-                println!("Can't edit the metadata of a theme that isn't yours");
-                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-            } else if res.status() == reqwest::StatusCode::PRECONDITION_FAILED {
-                #[cfg(feature = "logging")]
-                println!("That isn't a valid metadata type");
-                Err(ErrorKind::Server(RavenServerErrorKind::PreConditionFailed("metadata type".to_string()).into()).into())
-            } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
-                #[cfg(feature = "logging")]
-                println!(
+            println!("That theme hasn't been published");
+            Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
+        } else if res.status() == reqwest::StatusCode::FORBIDDEN {
+            #[cfg(feature = "logging")]
+            println!("Can't edit the metadata of a theme that isn't yours");
+            Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
+        } else if res.status() == reqwest::StatusCode::PRECONDITION_FAILED {
+            #[cfg(feature = "logging")]
+            println!("That isn't a valid metadata type");
+            Err(ErrorKind::Server(
+                RavenServerErrorKind::PreConditionFailed("metadata type".to_string()).into(),
+            )
+            .into())
+        } else if res.status() == reqwest::StatusCode::PAYLOAD_TOO_LARGE {
+            #[cfg(feature = "logging")]
+            println!(
                         "Your description or screenshot url was more than 200 characters long. Please shorten it."
                     );
-                Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
-            } else {
-                #[cfg(feature = "logging")]
-                println!("Server error. Code {:?}", res.status());
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-            }
+            Err(ErrorKind::Server(RavenServerErrorKind::TooLarge.into()).into())
+        } else {
+            #[cfg(feature = "logging")]
+            println!("Server error. Code {:?}", res.status());
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
         }
+    }
 }
 /// Deletes a theme from the online repo
 pub fn unpublish_theme<N>(name: N) -> Result<()>
@@ -319,29 +325,29 @@ where
     let res = client
         .post(&(get_host()? + "/themes/delete/" + &name + "?token=" + &info.token))
         .send()?;
-        if res.status().is_success() {
+    if res.status().is_success() {
+        #[cfg(feature = "logging")]
+        println!("Successfully unpublished theme");
+        Ok(())
+    } else {
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
             #[cfg(feature = "logging")]
-            println!("Successfully unpublished theme");
-            Ok(())
+            println!("Can't unpublish a nonexistent theme");
+            Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
+        } else if res.status() == reqwest::StatusCode::FORBIDDEN {
+            #[cfg(feature = "logging")]
+            println!("Can't unpublish a theme that isn't yours");
+            Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
+        } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
+            #[cfg(feature = "logging")]
+            println!("Did not provide a valid login token");
+            Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
         } else {
-            if res.status() == reqwest::StatusCode::NOT_FOUND {
-                #[cfg(feature = "logging")]
-                println!("Can't unpublish a nonexistent theme");
-                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
-            } else if res.status() == reqwest::StatusCode::FORBIDDEN {
-                #[cfg(feature = "logging")]
-                println!("Can't unpublish a theme that isn't yours");
-                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-            } else if res.status() == reqwest::StatusCode::UNAUTHORIZED {
-                #[cfg(feature = "logging")]
-                println!("Did not provide a valid login token");
-                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-            } else {
-                #[cfg(feature = "logging")]
-                println!("Server error. Code {:?}", res.status());
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-            }
+            #[cfg(feature = "logging")]
+            println!("Server error. Code {:?}", res.status());
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
         }
+    }
 }
 /// Prints out a warning when installing a theme
 pub fn install_warning(esp: bool) {
@@ -373,68 +379,29 @@ where
     tname = tname + &name + ".tar";
     println!("{}", tname);
     let client = reqwest::Client::new();
-    let mut res = client.get(&(get_host()? + "/themes/repo/" + &name)).send()?;
-        if res.status().is_success() {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&tname)?;
-            res.copy_to(&mut file)?;
-            println!("Downloaded theme.");
-            if res.status() == reqwest::StatusCode::ALREADY_REPORTED && !force {
-                print!(
+    let mut res = client
+        .get(&(get_host()? + "/themes/repo/" + &name))
+        .send()?;
+    if res.status().is_success() {
+        let mut file = OpenOptions::new().create(true).write(true).open(&tname)?;
+        res.copy_to(&mut file)?;
+        println!("Downloaded theme.");
+        if res.status() == reqwest::StatusCode::ALREADY_REPORTED && !force {
+            print!(
                         "This theme has recently been reported, and has not been approved by an admin. It is not advisable to install this theme. Are you sure you would like to continue? (y/n)"
                     );
-                io::stdout().flush()?;
-                let mut r = String::new();
-                io::stdin().read_line(&mut r)?;
-                if r.trim() == "y" {
-                    println!(
+            io::stdout().flush()?;
+            let mut r = String::new();
+            io::stdin().read_line(&mut r)?;
+            if r.trim() == "y" {
+                println!(
                             "Continuing. Please look carefully at the theme files in ~/.config/raven/themes/{} before loading this theme.",
                             name
                         );
-                    import(tname.as_str())?;
-                    #[cfg(feature = "logging")]
-                    println!("Imported theme. Removing archive.");
-                    fs::remove_file(&tname)?;
-                    #[cfg(feature = "logging")]
-                    println!("Downloading metadata.");
-                    let meta = get_metadata(name.as_str())?;
-                    let mut st = load_store(name.as_str())?;
-                    st.screenshot = meta.screen;
-                    st.description = meta.description;
-                    up_theme(st)?;
-                    if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script")
-                        .is_ok()
-                        || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar")
-                            .is_ok()
-                    {
-                        if !force {
-                            install_warning(true);
-                        }
-                    } else {
-                        if !force {
-                            install_warning(false);
-                        }
-                    }
-                    Ok(true)
-                } else {
-                    #[cfg(feature = "logging")]
-                    println!("Removing downloaded archive.");
-                    fs::remove_file(&tname)?;
-                    Ok(false)
-                }
-            } else {
-                if res.status() == reqwest::StatusCode::ALREADY_REPORTED {
-                    #[cfg(feature = "logging")]
-                    print!(
-                            "This theme has recently been reported, and has not been approved by an admin. It is not advisable to install this theme. Continuing because of --force."
-                        );
-                }
                 import(tname.as_str())?;
                 #[cfg(feature = "logging")]
                 println!("Imported theme. Removing archive.");
-                fs::remove_file(tname)?;
+                fs::remove_file(&tname)?;
                 #[cfg(feature = "logging")]
                 println!("Downloading metadata.");
                 let meta = get_metadata(name.as_str())?;
@@ -455,43 +422,76 @@ where
                     }
                 }
                 Ok(true)
-            }
-        } else {
-            if res.status() == reqwest::StatusCode::NOT_FOUND {
-                #[cfg(feature = "logging")]
-                println!("Theme has not been uploaded");
-                Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
             } else {
                 #[cfg(feature = "logging")]
-                println!("Server error. Code {:?}", res.status());
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
+                println!("Removing downloaded archive.");
+                fs::remove_file(&tname)?;
+                Ok(false)
             }
+        } else {
+            if res.status() == reqwest::StatusCode::ALREADY_REPORTED {
+                #[cfg(feature = "logging")]
+                print!(
+                            "This theme has recently been reported, and has not been approved by an admin. It is not advisable to install this theme. Continuing because of --force."
+                        );
+            }
+            import(tname.as_str())?;
+            #[cfg(feature = "logging")]
+            println!("Imported theme. Removing archive.");
+            fs::remove_file(tname)?;
+            #[cfg(feature = "logging")]
+            println!("Downloading metadata.");
+            let meta = get_metadata(name.as_str())?;
+            let mut st = load_store(name.as_str())?;
+            st.screenshot = meta.screen;
+            st.description = meta.description;
+            up_theme(st)?;
+            if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script").is_ok()
+                || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar").is_ok()
+            {
+                if !force {
+                    install_warning(true);
+                }
+            } else {
+                if !force {
+                    install_warning(false);
+                }
+            }
+            Ok(true)
         }
+    } else {
+        if res.status() == reqwest::StatusCode::NOT_FOUND {
+            #[cfg(feature = "logging")]
+            println!("Theme has not been uploaded");
+            Err(ErrorKind::Server(RavenServerErrorKind::DoesNotExist(name).into()).into())
+        } else {
+            #[cfg(feature = "logging")]
+            println!("Server error. Code {:?}", res.status());
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
+        }
+    }
 }
 /// Logs a user in and writes userinfo file to disk
-pub fn login_user<N>(name: N, pass: N) -> Result<()>
-where
-    N: Into<String>,
-{
+pub fn login_user(name: impl Into<String>, pass: impl Into<String>) -> Result<()> {
     let client = reqwest::Client::new();
     let mut res = client
         .get(&(get_host()? + "/themes/user/login?name=" + &name.into() + "&pass=" + &pass.into()))
         .send()?;
-        if res.status().is_success() {
+    if res.status().is_success() {
+        #[cfg(feature = "logging")]
+        println!("Successfully signed in. Writing login info to disk.");
+        let info = res.json()?;
+        up_info(info)?;
+        Ok(())
+    } else {
+        if res.status() == reqwest::StatusCode::FORBIDDEN {
             #[cfg(feature = "logging")]
-            println!("Successfully signed in. Writing login info to disk.");
-            let info = res.json()?;
-            up_info(info)?;
-            Ok(())
+            println!("Wrong login info. Try again!");
+            Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
         } else {
-            if res.status() == reqwest::StatusCode::FORBIDDEN {
-                #[cfg(feature = "logging")]
-                println!("Wrong login info. Try again!");
-                Err(ErrorKind::Server(RavenServerErrorKind::PermissionDenied.into()).into())
-            } else {
-                #[cfg(feature = "logging")]
-                println!("Server error. Code {:?}", res.status());
-                Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
-            }
+            #[cfg(feature = "logging")]
+            println!("Server error. Code {:?}", res.status());
+            Err(ErrorKind::Server(RavenServerErrorKind::ServerError(res.status()).into()).into())
         }
+    }
 }

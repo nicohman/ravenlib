@@ -75,10 +75,7 @@ impl Theme {
         }
     }
     /// Loads a single key option
-    pub fn load_k<N>(&self, k: N, v: N) -> Result<bool>
-    where
-        N: Into<String>,
-    {
+    pub fn load_k(&self, k: impl Into<String>, v: impl Into<String>) -> Result<bool> {
         let (k, v) = (k.into(), v.into());
         let mut ok = true;
         match k.as_str() {
@@ -153,16 +150,16 @@ impl Theme {
                 Dunst => self.load_dunst().unwrap(),
                 OldTmTheme => {
                     self.convert_single("st_tmtheme").unwrap();
-                },
+                }
                 OldScs => {
                     self.convert_single("st_scs").unwrap();
-                },
+                }
                 OldSublTheme => {
                     self.convert_single("st_subltheme").unwrap();
-                },
+                }
                 VsCode => {
                     self.convert_single("vscode").unwrap();
-                },
+                }
             };
             #[cfg(feature = "logging")]
             println!("Loaded option {}", option.to_string());
@@ -174,12 +171,12 @@ impl Theme {
         Ok(())
     }
     /// Edits the value of a key in hjson files
-    fn edit_hjson<N, S, T>(&self, file: N, pat: S, value: T) -> Result<()>
-    where
-        N: Into<String>,
-        S: Into<String>,
-        T: Into<String>,
-    {
+    fn edit_hjson(
+        &self,
+        file: impl Into<String>,
+        pat: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Result<()> {
         let file = &file.into();
         let pat = &pat.into();
         let value = &value.into();
@@ -311,10 +308,7 @@ impl Theme {
         }
         Ok(true)
     }
-    pub fn load_sublt<N>(&self, stype: N, value: N) -> Result<bool>
-    where
-        N: Into<String>,
-    {
+    pub fn load_sublt(&self, stype: impl Into<String>, value: impl Into<String>) -> Result<bool> {
         let stype = &stype.into();
         let path = get_home() + "/.config/sublime-text-3/Packages/User";
         if fs::metadata(&path).is_err() {
@@ -543,10 +537,11 @@ where
     Ok(())
 }
 /// Add an option to a theme
-pub fn add_to_theme<N>(theme_name: N, option: N, path: N) -> Result<()>
-where
-    N: Into<String>,
-{
+pub fn add_to_theme(
+    theme_name: impl Into<String>,
+    option: impl Into<String>,
+    path: impl Into<String>,
+) -> Result<()> {
     let (theme_name, option, path) = (theme_name.into(), option.into(), path.into());
     let cur_theme = load_theme(theme_name.as_str())?;
     let cur_st = load_store(theme_name.as_str())?;
@@ -578,10 +573,7 @@ where
     Ok(())
 }
 /// Remove an option from a theme
-pub fn rm_from_theme<N>(theme_name: N, option: N) -> Result<()>
-where
-    N: Into<String>,
-{
+pub fn rm_from_theme(theme_name: impl Into<String>, option: impl Into<String>) -> Result<()> {
     let (theme_name, option) = (theme_name.into(), option.into());
     let cur_theme = load_theme(theme_name.as_str())?;
     let cur_st = load_store(theme_name.as_str())?;
@@ -633,12 +625,11 @@ pub fn get_themes() -> Result<Vec<String>> {
         .collect::<Vec<String>>())
 }
 /// Changes a key-value option
-pub fn key_value<N, S, T>(key: N, value: S, theme: T) -> Result<()>
-where
-    N: Into<String>,
-    S: Into<String>,
-    T: Into<String>,
-{
+pub fn key_value(
+    key: impl Into<String>,
+    value: impl Into<String>,
+    theme: impl Into<String>,
+) -> Result<()> {
     let mut store = load_store(theme.into())?;
     store
         .kv
