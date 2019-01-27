@@ -10,9 +10,11 @@ extern crate reqwest;
 extern crate tar;
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate log;
+pub mod error;
 /// Interactions with online instances of ThemeHub
 pub mod ravenserver;
-pub mod error;
 use std::fs::DirEntry;
 /// Module for theme manipulation
 pub mod themes;
@@ -20,9 +22,9 @@ pub mod themes;
 pub mod config {
     use crate::themes::*;
     use dirs::home_dir;
+    use error::*;
     use serde_json::value::Map;
     use std::{fs, fs::OpenOptions, io::Read, io::Write};
-    use error::*;
     /// Returns home directory as string
     pub fn get_home() -> String {
         return String::from(home_dir().unwrap().to_str().unwrap());
@@ -67,6 +69,7 @@ pub mod config {
     pub fn check_themes() -> Result<()> {
         let entries = get_themes()?;
         for entry in entries {
+            info!("Checking theme {}", entry);
             if fs::metadata(get_home() + "/.config/raven/themes/" + &entry + "/theme").is_ok() {
                 convert_theme(entry)?;
             }
@@ -79,19 +82,19 @@ pub mod config {
             fs::create_dir(get_home() + "/.config/raven")?;
             fs::create_dir(get_home() + "/.config/raven/themes")?;
         } else {
-            println!(
+            error!(
                     "The config file format has changed. Please check ~/.config/raven/config.json to reconfigure raven."
                 );
-
         }
+        info!("Creating config file");
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
             .open(get_home() + "/.config/raven/config.json")?;
         let default = serde_json::to_string(&Config::default())?;
+        info!("Writing default config to file");
         file.write_all(default.as_bytes())?;
-        #[cfg(feature = "logging")]
-        println!("Correctly initialized base config and directory structure.");
+        info!("Correctly initialized base config and directory structure.");
         Ok(())
     }
     /// Checks to see if base config/directories need to be initialized
@@ -101,16 +104,19 @@ pub mod config {
             || fs::metadata(get_home() + "/.config/raven/themes").is_err()
     }
     /// Updates and replaces the stored config with a new config
-    pub fn up_config(conf: Config) -> Result<Config>{
+    pub fn up_config(conf: Config) -> Result<Config> {
+        info!("Opening and writing to temp config file");
         OpenOptions::new()
             .create(true)
             .write(true)
             .open(get_home() + "/.config/raven/~config.json")?
             .write_all(serde_json::to_string(&conf)?.as_bytes())?;
+        info!("Copying temp file to config file");
         fs::copy(
             get_home() + "/.config/raven/~config.json",
             get_home() + "/.config/raven/config.json",
         )?;
+        info!("Removing temp file");
         fs::remove_file(get_home() + "/.config/raven/~config.json")?;
         Ok(conf)
     }
@@ -118,12 +124,15 @@ pub mod config {
     pub fn up_theme(theme: ThemeStore) -> Result<ThemeStore> {
         let wthemepath = get_home() + "/.config/raven/themes/" + &theme.name + "/~theme.json";
         let themepath = get_home() + "/.config/raven/themes/" + &theme.name + "/theme.json";
+        info!("Opening and writing to temp theme store");
         OpenOptions::new()
             .create(true)
             .write(true)
             .open(&wthemepath)?
             .write_all(serde_json::to_string(&theme)?.as_bytes())?;
+        info!("Copying temp theme store to final");
         fs::copy(&wthemepath, &themepath)?;
+        info!("Removing temp file");
         fs::remove_file(&wthemepath)?;
         Ok(theme)
     }
@@ -166,49 +175,48 @@ pub mod config {
     {
         let theme = theme.into();
         let mut st = String::new();
+        info!("Opening and reading theme store {}", theme);
         fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")?
             .read_to_string(&mut st)?;
+        info!("Parsing theme store");
         let result = serde_json::from_str(&st)?;
         Ok(result)
     }
     /// Retrieve config settings from file
     pub fn get_config() -> Result<Config> {
         let mut conf = String::new();
-        fs::File::open(get_home() + "/.config/raven/config.json")?
-            .read_to_string(&mut conf)?;
+        info!("Opening and reading config file");
+        fs::File::open(get_home() + "/.config/raven/config.json")?.read_to_string(&mut conf)?;
+        info!("Parsing config file");
         Ok(serde_json::from_str(&conf)?)
     }
 }
 /// Ravend control
 pub mod daemon {
     use error::*;
-    use std::process::Command;
     use std::process::Child;
+    use std::process::Command;
     /// Starts ravend
     pub fn start_daemon() -> Result<Child> {
-        let child = Command::new("sh")
-            .arg("-c")
-            .arg("ravend")
-            .spawn()?;
-        #[cfg(feature = "logging")]
-        println!("Started cycle daemon.");
+        info!("Starting ravend");
+        let child = Command::new("sh").arg("-c").arg("ravend").spawn()?;
+        info!("Started cycle daemon.");
         Ok(child)
     }
     /// Stops ravend
     pub fn stop_daemon() -> Result<()> {
+        info!("Starting pkill command");
         Command::new("pkill")
             .arg("-SIGKILL")
             .arg("ravend")
             .output()?;
-        #[cfg(feature = "logging")]
-        println!("Stopped cycle daemon.");
+        info!("Stopped cycle daemon.");
         Ok(())
     }
     /// Checks if the ravend daemon is running
     pub fn check_daemon() -> Result<bool> {
-        let out = Command::new("ps")
-            .arg("aux")
-            .output()?;
+        info!("Starting ps command");
+        let out = Command::new("ps").arg("aux").output()?;
         let form_out = String::from_utf8_lossy(&out.stdout);
         let line_num = form_out.lines().filter(|x| x.contains("ravend")).count();
         Ok(line_num > 0)

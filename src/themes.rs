@@ -70,6 +70,7 @@ impl ROption {
 impl Theme {
     /// Loads options held within theme.json key-value storage
     pub fn load_kv(&self) {
+        info!("Loading all key-value options");
         for (k, v) in &self.kv {
             self.load_k(k.as_str(), v.as_str().unwrap()).unwrap();
         }
@@ -77,6 +78,8 @@ impl Theme {
     /// Loads a single key option
     pub fn load_k(&self, k: impl Into<String>, v: impl Into<String>) -> Result<bool> {
         let (k, v) = (k.into(), v.into());
+        info!("Loading key {} with value {}", k, v);
+
         let mut ok = true;
         match k.as_str() {
             "st_tmtheme" => self.load_sublt("st_tmtheme", v.as_str())?,
@@ -84,14 +87,12 @@ impl Theme {
             "st_subltheme" => self.load_sublt("st_subltheme", v.as_str())?,
             "vscode" => self.load_vscode(v.as_str())?,
             _ => {
-                #[cfg(feature = "logging")]
-                println!("Unrecognized key {}", k);
+                warn!("Unrecognized key {}", k);
                 ok = false;
                 false
             }
         };
-        #[cfg(feature = "logging")]
-        println!("Loaded key option {}", k);
+        info!("Loaded key option {}", k);
         Ok(ok)
     }
     /// Converts old single-string file options into key-value storage
@@ -101,13 +102,17 @@ impl Theme {
     {
         let key = name.into();
         let mut value = String::new();
+        info!("Opening old key file and reading");
         fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/" + &key)?
             .read_to_string(&mut value)?;
+        info!("Loading current theme store");
         let mut store = load_store(self.name.clone())?;
+        info!("Inserting key and value into key-value store");
         store.kv.insert(
             key.clone(),
             serde_json::Value::String(value.clone().trim().to_string()),
         );
+        info!("Removing old option");
         store.options = store
             .options
             .iter()
@@ -115,8 +120,8 @@ impl Theme {
             .map(|x| x.to_owned())
             .collect();
         up_theme(store)?;
-        #[cfg(feature = "logging")]
-        println!("Converted option {} to new key-value system", key);
+        info!("Converted option {} to new key-value system", key);
+        info!("Loading new key");
         Ok(self.load_k(key, value)?)
     }
     /// Iterates through options and loads them with submethods
@@ -127,8 +132,7 @@ impl Theme {
         let len = opt.len();
         while i <= len {
             let ref option = opt[len - i];
-            #[cfg(feature = "logging")]
-            println!("Loading option {}", option.to_string());
+            info!("Loading option {}", option.to_string());
             match option {
                 Polybar => self.load_poly(self.monitor).unwrap(),
                 OldI3 => self.load_i3(true).unwrap(),
@@ -161,13 +165,11 @@ impl Theme {
                     self.convert_single("vscode").unwrap();
                 }
             };
-            #[cfg(feature = "logging")]
-            println!("Loaded option {}", option.to_string());
+            info!("Loaded option {}", option.to_string());
             i += 1;
         }
         self.load_kv();
-        #[cfg(feature = "logging")]
-        println!("Loaded all options for theme {}", self.name);
+        info!("Loaded all options for theme {}", self.name);
         Ok(())
     }
     /// Edits the value of a key in hjson files
@@ -177,6 +179,7 @@ impl Theme {
         pat: impl Into<String>,
         value: impl Into<String>,
     ) -> Result<()> {
+        info!("Editing hjson file");
         let file = &file.into();
         let pat = &pat.into();
         let value = &value.into();
@@ -220,6 +223,7 @@ impl Theme {
         if fs::metadata(get_home() + "/.config/rofi").is_err() {
             fs::create_dir(get_home() + "/.config/rofi")?;
         }
+        info!("Copying rofi theme to rofi config");
         fs::copy(
             get_home() + "/.config/raven/themes/" + &self.name + "/rofi",
             get_home() + "/.config/rofi/theme.rasi",
@@ -228,10 +232,12 @@ impl Theme {
     }
     pub fn load_pywal(&self) -> Result<()> {
         let arg = get_home() + "/.config/raven/themes/" + &self.name + "/pywal";
+        info!("Starting wal");
         Command::new("wal").arg("-n").arg("-i").arg(arg).output()?;
         Ok(())
     }
     pub fn load_script(&self) -> Result<()> {
+        info!("Starting script");
         Command::new("sh")
             .arg("-c")
             .arg(get_home() + "/.config/raven/themes/" + &self.name + "/script")
@@ -242,22 +248,28 @@ impl Theme {
     pub fn load_openbox(&self) -> Result<()> {
         let mut base = String::new();
         if fs::metadata(get_home() + "/.config/raven/base_rc.xml").is_ok() {
+            info!("Opening and reading base_rc");
             fs::File::open(get_home() + "/.config/raven/base_rc.xml")?.read_to_string(&mut base)?;
         }
         let mut rest = String::new();
+        info!("Opening and reading openbox config");
         fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/openbox")?
             .read_to_string(&mut rest)?;
         base.push_str(&rest);
+        info!("Removing old openbox config");
         fs::remove_file(get_home() + "/.config/openbox/rc.xml")?;
+        info!("Creating and writing to new openbox config");
         OpenOptions::new()
             .create(true)
             .write(true)
             .open(get_home() + "/.config/openbox/rc.xml")?
             .write_all(base.as_bytes())?;
+        info!("Starting openbox reload command");
         Command::new("openbox").arg("--reconfigure").output()?;
         Ok(())
     }
     pub fn load_ranger(&self) -> Result<()> {
+        info!("Copying ranger config to ranger directory");
         fs::copy(
             get_home() + "/.config/raven/themes/" + &self.name + "/ranger",
             get_home() + "/.config/ranger/rc.conf",
@@ -268,19 +280,24 @@ impl Theme {
     pub fn load_dunst(&self) -> Result<()> {
         let mut config = String::new();
         if fs::metadata(get_home() + "/.config/raven/base_dunst").is_ok() {
+            info!("Opening and reading base dunst file");
             fs::File::open(get_home() + "/.config/raven/base_dunst")?
                 .read_to_string(&mut config)?;
         }
         let mut app = String::new();
+        info!("Opening and reading dunst file");
         fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/dunst")?
             .read_to_string(&mut app)?;
         config.push_str(&app);
+        info!("Removing old dunstrc");
         fs::remove_file(get_home() + "/.config/dunst/dunstrc")?;
+        info!("Creating and writing to new dunstrc");
         OpenOptions::new()
             .create(true)
             .write(true)
             .open(get_home() + "/.config/dunst/dunstrc")?
             .write_all(config.as_bytes())?;
+        info!("Starting dunst");
         Command::new("dunst").spawn()?;
         Ok(())
     }
@@ -291,8 +308,7 @@ impl Theme {
         let path1 = get_home() + "/.config/Code/User";
         let path2 = get_home() + "/.config/Code - OSS/User";
         if fs::metadata(&path1).is_err() && fs::metadata(&path2).is_err() {
-            #[cfg(feature = "logging")]
-            println!(
+            error!(
                 "Couldn't find neither .config/Code nor .config/Code - OSS. Do you have VSCode installed? \
                 Skipping."
             );
@@ -301,9 +317,11 @@ impl Theme {
         let pattern = "\"workbench.colorTheme\": ";
         let value = value.into();
         if fs::metadata(&path1).is_ok() {
+            info!("Editing ~/.config/Code/User sublime settings");
             self.edit_hjson(path1 + "/settings.json", pattern, value.as_str())?;
         }
         if fs::metadata(&path2).is_ok() {
+            info!("Editing ~/.config/Code - OSS/User sublime settings");
             self.edit_hjson(path2 + "/settings.json", pattern, value)?;
         }
         Ok(true)
@@ -312,8 +330,7 @@ impl Theme {
         let stype = &stype.into();
         let path = get_home() + "/.config/sublime-text-3/Packages/User";
         if fs::metadata(&path).is_err() {
-            #[cfg(feature = "logging")]
-            println!(
+            error!(
                 "Couldn't find {}. Do you have sublime text 3 installed? \
                  Skipping.",
                 &path
@@ -324,6 +341,7 @@ impl Theme {
         let mut value = value.into();
         if value.starts_with("sublt/") {
             value = value.trim_start_matches("sublt/").to_string();
+            info!("Copying file {}", value);
             fs::copy(
                 get_home() + "/.config/raven/themes/" + &self.name + "/sublt/" + &value,
                 path.clone() + "/" + &value,
@@ -336,24 +354,26 @@ impl Theme {
         } else if stype == "st_subltheme" {
             pattern = "\"theme\": ";
         }
+        info!("Editing sublime preferences");
         self.edit_hjson(path + "/Preferences.sublime-settings", pattern, value)?;
         Ok(true)
     }
 
     pub fn load_ncm(&self) -> Result<bool> {
         if fs::metadata(get_home() + "/.config/ncmpcpp").is_ok() {
+            info!("Copying ncmpcpp config to ~/.config/ncmpcpp");
             fs::copy(
                 get_home() + "/.config/raven/themes/" + &self.name + "/ncmpcpp",
                 get_home() + "/.config/ncmpcpp/config",
             )?;
         } else if fs::metadata(get_home() + "/.ncmpcpp").is_ok() {
+            info!("Copying ncmpcpp config to ~/.ncmpcpp");
             fs::copy(
                 get_home() + "/.config/raven/themes/" + &self.name + "/ncmpcpp",
                 get_home() + "/.ncmpcpp/config",
             )?;
         } else {
-            #[cfg(feature = "logging")]
-            println!(
+            error!(
                 "Couldn't detect a ncmpcpp config directory in ~/.config/ncmppcp or ~/.ncmpcpp."
             );
             return Ok(false);
@@ -363,20 +383,25 @@ impl Theme {
     pub fn load_bspwm(&self) -> Result<()> {
         let mut config = String::new();
         if fs::metadata(get_home() + "/.config/raven/base_bspwm").is_ok() {
+            info!("Opening and reading base bspwm file");
             fs::File::open(get_home() + "/.config/raven/base_bspwm")?
                 .read_to_string(&mut config)?;
         }
         let mut app = String::new();
+        info!("Opening and reading bspwm config");
         fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/bspwm")?
             .read_to_string(&mut app)?;
         config.push_str(&app);
+        info!("Removing old bspwmrc");
         fs::remove_file(get_home() + "/.config/bspwm/bspwmrc")?;
+        info!("Creating and writing to new bspwmrc");
         OpenOptions::new()
             .create(true)
             .write(true)
             .mode(0o744)
             .open(get_home() + "/.config/bspwm/bspwmrc")?
             .write_all(config.as_bytes())?;
+        info!("Starting bspwmrc");
         Command::new("sh")
             .arg("-c")
             .arg(get_home() + "/.config/bspwm/bspwmrc")
@@ -386,36 +411,45 @@ impl Theme {
     pub fn load_i3(&self, isw: bool) -> Result<()> {
         let mut config = String::new();
         if fs::metadata(get_home() + "/.config/raven/base_i3").is_ok() {
+            info!("Opening and reading base i3 config");
             fs::File::open(get_home() + "/.config/raven/base_i3")?.read_to_string(&mut config)?;
         }
         let mut app = String::new();
         if isw {
+            info!("Loading and reading old-style i3 config");
             fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/wm")?
                 .read_to_string(&mut app)?;
         } else {
+            info!("Loading and reading i3 config");
             fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/i3")?
                 .read_to_string(&mut app)?;
         }
         config.push_str(&app);
         if fs::metadata(get_home() + "/.config/i3").is_err() {
+            info!("Creating dir ~/.config/i3");
             fs::create_dir(get_home() + "/.config/i3")?;
         }
         if fs::metadata(get_home() + "/.config/i3/config").is_ok() {
+            info!("Removing old i3 config");
             fs::remove_file(get_home() + "/.config/i3/config")?;
         }
+        info!("Creating and writing to i3 config");
         OpenOptions::new()
             .create(true)
             .write(true)
             .open(get_home() + "/.config/i3/config")?
             .write_all(config.as_bytes())?;
+        info!("Starting command to reload i3");
         Command::new("i3-msg").arg("reload").output()?;
         Ok(())
     }
     pub fn load_termite(&self) -> Result<()> {
+        info!("Copying termite config to termite dir");
         fs::copy(
             get_home() + "/.config/raven/themes/" + &self.name + "/termite",
             get_home() + "/.config/termite/config",
         )?;
+        info!("Sending SIGUSR1 to termite processes");
         Command::new("pkill")
             .arg("-SIGUSR1")
             .arg("termite")
@@ -424,6 +458,7 @@ impl Theme {
     }
     pub fn load_poly(&self, monitor: i32) -> Result<()> {
         for number in 0..monitor {
+            info!("Starting polybar for monitor #{}", number);
             Command::new("sh")
                 .arg("-c")
                 .arg(
@@ -440,12 +475,14 @@ impl Theme {
         Ok(())
     }
     fn load_lemon(&self) -> Result<()> {
+        info!("Starting lemonbar script");
         Command::new("sh")
             .arg(get_home() + "/.config/raven/themes/" + &self.name + "/lemonbar")
             .spawn()?;
         Ok(())
     }
     fn load_wall(&self) -> Result<()> {
+        info!("Starting feh to load wallpaper");
         Command::new("feh")
             .arg("--bg-scale")
             .arg(get_home() + "/.config/raven/themes/" + &self.name + "/wall")
@@ -459,6 +496,7 @@ impl Theme {
             name.push_str("_m");
             xres.arg("-merge");
         }
+        info!("Loading xresources file");
         xres.arg(get_home() + "/.config/raven/themes/" + &self.name + "/" + &name)
             .output()?;
         Ok(())
@@ -475,15 +513,16 @@ where
         let mut conf = get_config()?;
         conf.editing = theme_name.to_string();
         up_config(conf)?;
-        #[cfg(feature = "logging")]
         println!("You are now editing the theme {}", &theme_name);
         Ok(theme_name)
     } else {
+        error!("Theme does not exist!");
         Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
 }
 /// Clears possible remnants of old themes
 pub fn clear_prev() -> Result<()> {
+    info!("Killing polybar, lemonbar, and dunst");
     Command::new("pkill").arg("polybar").output()?;
     Command::new("pkill").arg("lemonbar").output()?;
     Command::new("pkill").arg("dunst").output()?;
@@ -494,6 +533,7 @@ pub fn del_theme<N>(theme_name: N) -> Result<()>
 where
     N: Into<String>,
 {
+    info!("Removing theme directory");
     fs::remove_dir_all(get_home() + "/.config/raven/themes/" + &theme_name.into())?;
     Ok(())
 }
@@ -504,11 +544,11 @@ where
 {
     let last = last.into();
     if last.chars().count() > 0 {
+        info!("Running last loaded theme");
         run_theme(&load_theme(last.trim())?)?;
         Ok(())
     } else {
-        #[cfg(feature = "logging")]
-        println!("No last theme saved. Cannot refresh.");
+        error!("No last theme saved. Cannot refresh.");
         Err(ErrorKind::InvalidThemeName(last).into())
     }
 }
@@ -518,7 +558,9 @@ where
     N: Into<String>,
 {
     let theme_name = theme_name.into();
+    info!("Creating theme dir");
     fs::create_dir(get_home() + "/.config/raven/themes/" + &theme_name)?;
+    info!("Creating theme store file");
     let mut file = OpenOptions::new()
         .create(true)
         .write(true)
@@ -532,6 +574,7 @@ where
         kv: Map::new(),
     };
     let st = serde_json::to_string(&stdef)?;
+    info!("Writing to theme store");
     file.write_all(st.as_bytes())?;
     edit(theme_name)?;
     Ok(())
@@ -543,6 +586,7 @@ pub fn add_to_theme(
     path: impl Into<String>,
 ) -> Result<()> {
     let (theme_name, option, path) = (theme_name.into(), option.into(), path.into());
+    info!("Loading theme");
     let cur_theme = load_theme(theme_name.as_str())?;
     let cur_st = load_store(theme_name.as_str())?;
     let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
@@ -561,11 +605,13 @@ pub fn add_to_theme(
         }
     }
     if !already_used {
+        info!("Adding new option to theme. Updating theme store.");
         new_themes.options.push(option.clone());
         up_theme(new_themes)?;
     }
     let mut totpath = env::current_dir()?;
     totpath.push(path);
+    info!("Copying option {} to theme directory", option);
     fs::copy(
         totpath,
         get_home() + "/.config/raven/themes/" + &theme_name + "/" + &option,
@@ -575,7 +621,9 @@ pub fn add_to_theme(
 /// Remove an option from a theme
 pub fn rm_from_theme(theme_name: impl Into<String>, option: impl Into<String>) -> Result<()> {
     let (theme_name, option) = (theme_name.into(), option.into());
+    info!("Loading theme");
     let cur_theme = load_theme(theme_name.as_str())?;
+    info!("Loading store");
     let cur_st = load_store(theme_name.as_str())?;
     let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
     let mut new_themes = ThemeStore {
@@ -590,25 +638,25 @@ pub fn rm_from_theme(theme_name: impl Into<String>, option: impl Into<String>) -
     let mut i = 0;
     while i < new_themes.options.len() {
         if &new_themes.options[i] == &option {
-            #[cfg(feature = "logging")]
-            println!("Found option {}", option);
+            info!("Found option {}. Removing.", option);
             found = true;
             new_themes.options.remove(i);
         }
         i += 1;
     }
     if found {
+        info!("Updating theme store.");
         up_theme(new_themes)?;
         Ok(())
     } else {
-        #[cfg(feature = "logging")]
-        println!("Couldn't find option {}", option);
+        error!("Couldn't find option {}", option);
         Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
 }
 /// Run/refresh a loaded Theme
 pub fn run_theme(new_theme: &Theme) -> Result<()> {
     clear_prev()?;
+    info!("Running theme options");
     new_theme.load_all()?;
     // Updates the 'last loaded theme' information for later use by raven refresh
     let mut conf = get_config()?;
@@ -618,6 +666,7 @@ pub fn run_theme(new_theme: &Theme) -> Result<()> {
 }
 /// Get all themes
 pub fn get_themes() -> Result<Vec<String>> {
+    info!("Reading in all themes");
     Ok(fs::read_dir(get_home() + "/.config/raven/themes")?
         .collect::<Vec<io::Result<DirEntry>>>()
         .into_iter()
@@ -631,6 +680,7 @@ pub fn key_value(
     theme: impl Into<String>,
 ) -> Result<()> {
     let mut store = load_store(theme.into())?;
+    info!("Inserting new key-value into store");
     store
         .kv
         .insert(key.into(), serde_json::Value::String(value.into()));
@@ -643,15 +693,16 @@ where
     N: Into<String>,
 {
     let theme_name = theme_name.into();
-
+    info!("Loading config");
     let conf = get_config()?;
+    info!("Loading theme directory");
     let ent_res = fs::read_dir(get_home() + "/.config/raven/themes/" + &theme_name);
     if ent_res.is_ok() {
-        #[cfg(feature = "logging")]
-        println!("Found theme {}", theme_name);
+        info!("Found theme {}", theme_name);
         if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
         {
             let theme_info = load_store(theme_name.as_str())?;
+            info!("Loading options");
             let opts: Vec<ROption> = theme_info
                 .options
                 .iter()
@@ -673,16 +724,17 @@ where
             };
             Ok(new_theme)
         } else {
+            error!("Theme store does not exist");
             Err(ErrorKind::InvalidThemeName(theme_name).into())
         }
     } else {
-        #[cfg(feature = "logging")]
-        println!("Theme does not exist.");
+        error!("Theme does not exist.");
         Err(ErrorKind::InvalidThemeName(theme_name).into())
     }
 }
 /// Loads all themes
 pub fn load_themes() -> Result<Vec<Theme>> {
+    info!("Loading all themes");
     Ok(get_themes()?
         .iter()
         .map(|x| load_theme(x.as_str()))
