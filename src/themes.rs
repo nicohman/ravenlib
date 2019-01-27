@@ -19,6 +19,33 @@ pub struct ThemeStore {
     #[serde(default)]
     pub kv: Map<String, Value>,
 }
+impl ThemeStore {
+    pub fn load(theme: impl Into<String>) -> Result<ThemeStore> {
+        let theme = theme.into();
+        let mut st = String::new();
+        info!("Opening and reading theme store {}", theme);
+        fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")?
+            .read_to_string(&mut st)?;
+        info!("Parsing theme store");
+        let result = serde_json::from_str(&st)?;
+        Ok(result)
+    }
+    pub fn store(self) -> Result<ThemeStore> {
+        let wthemepath = get_home() + "/.config/raven/themes/" + &self.name + "/~theme.json";
+        let themepath = get_home() + "/.config/raven/themes/" + &self.name + "/theme.json";
+        info!("Opening and writing to temp theme store");
+        OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&wthemepath)?
+            .write_all(serde_json::to_string(&self)?.as_bytes())?;
+        info!("Copying temp theme store to final");
+        fs::copy(&wthemepath, &themepath)?;
+        info!("Removing temp file");
+        fs::remove_file(&wthemepath)?;
+        Ok(self)
+    }
+}
 /// Structure that holds all methods and data for individual themes.
 #[derive(Clone)]
 pub struct Theme {
@@ -106,7 +133,7 @@ impl Theme {
         fs::File::open(get_home() + "/.config/raven/themes/" + &self.name + "/" + &key)?
             .read_to_string(&mut value)?;
         info!("Loading current theme store");
-        let mut store = load_store(self.name.clone())?;
+        let mut store = ThemeStore::load(self.name.clone())?;
         info!("Inserting key and value into key-value store");
         store.kv.insert(
             key.clone(),
@@ -119,7 +146,7 @@ impl Theme {
             .filter(|x| x.as_str() != key.as_str())
             .map(|x| x.to_owned())
             .collect();
-        up_theme(store)?;
+        store.store()?;
         info!("Converted option {} to new key-value system", key);
         info!("Loading new key");
         Ok(self.load_k(key, value)?)
@@ -588,7 +615,7 @@ pub fn add_to_theme(
     let (theme_name, option, path) = (theme_name.into(), option.into(), path.into());
     info!("Loading theme");
     let cur_theme = load_theme(theme_name.as_str())?;
-    let cur_st = load_store(theme_name.as_str())?;
+    let cur_st = ThemeStore::load(theme_name.as_str())?;
     let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
     let mut new_themes = ThemeStore {
         name: theme_name.clone(),
@@ -607,7 +634,7 @@ pub fn add_to_theme(
     if !already_used {
         info!("Adding new option to theme. Updating theme store.");
         new_themes.options.push(option.clone());
-        up_theme(new_themes)?;
+        new_themes.store()?;
     }
     let mut totpath = env::current_dir()?;
     totpath.push(path);
@@ -624,7 +651,7 @@ pub fn rm_from_theme(theme_name: impl Into<String>, option: impl Into<String>) -
     info!("Loading theme");
     let cur_theme = load_theme(theme_name.as_str())?;
     info!("Loading store");
-    let cur_st = load_store(theme_name.as_str())?;
+    let cur_st = ThemeStore::load(theme_name.as_str())?;
     let opts = cur_theme.options.iter().map(|x| x.to_string()).collect();
     let mut new_themes = ThemeStore {
         name: theme_name.clone(),
@@ -646,7 +673,7 @@ pub fn rm_from_theme(theme_name: impl Into<String>, option: impl Into<String>) -
     }
     if found {
         info!("Updating theme store.");
-        up_theme(new_themes)?;
+        new_themes.store()?;
         Ok(())
     } else {
         error!("Couldn't find option {}", option);
@@ -679,12 +706,12 @@ pub fn key_value(
     value: impl Into<String>,
     theme: impl Into<String>,
 ) -> Result<()> {
-    let mut store = load_store(theme.into())?;
+    let mut store = ThemeStore::load(theme)?;
     info!("Inserting new key-value into store");
     store
         .kv
         .insert(key.into(), serde_json::Value::String(value.into()));
-    up_theme(store)?;
+    store.store()?;
     Ok(())
 }
 /// Load in data for a specific theme
@@ -701,7 +728,7 @@ where
         info!("Found theme {}", theme_name);
         if fs::metadata(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json").is_ok()
         {
-            let theme_info = load_store(theme_name.as_str())?;
+            let theme_info = ThemeStore::load(theme_name.as_str())?;
             info!("Loading options");
             let opts: Vec<ROption> = theme_info
                 .options

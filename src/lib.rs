@@ -120,22 +120,6 @@ pub mod config {
         fs::remove_file(get_home() + "/.config/raven/~config.json")?;
         Ok(conf)
     }
-    /// Updates and replaces a stored ThemeStore with a new one
-    pub fn up_theme(theme: ThemeStore) -> Result<ThemeStore> {
-        let wthemepath = get_home() + "/.config/raven/themes/" + &theme.name + "/~theme.json";
-        let themepath = get_home() + "/.config/raven/themes/" + &theme.name + "/theme.json";
-        info!("Opening and writing to temp theme store");
-        OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&wthemepath)?
-            .write_all(serde_json::to_string(&theme)?.as_bytes())?;
-        info!("Copying temp theme store to final");
-        fs::copy(&wthemepath, &themepath)?;
-        info!("Removing temp file");
-        fs::remove_file(&wthemepath)?;
-        Ok(theme)
-    }
     /// Converts a theme from the old pipe-delineated format to the new json format
     pub fn convert_theme<N>(theme_name: N) -> Result<ThemeStore>
     where
@@ -168,19 +152,6 @@ pub mod config {
             .open(get_home() + "/.config/raven/themes/" + &theme_name + "/theme.json")?
             .write_all(serde_json::to_string(&themes)?.as_bytes())?;
         Ok(themes)
-    }
-    pub fn load_store<N>(theme: N) -> Result<ThemeStore>
-    where
-        N: Into<String>,
-    {
-        let theme = theme.into();
-        let mut st = String::new();
-        info!("Opening and reading theme store {}", theme);
-        fs::File::open(get_home() + "/.config/raven/themes/" + &theme + "/theme.json")?
-            .read_to_string(&mut st)?;
-        info!("Parsing theme store");
-        let result = serde_json::from_str(&st)?;
-        Ok(result)
     }
     /// Retrieve config settings from file
     pub fn get_config() -> Result<Config> {

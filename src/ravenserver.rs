@@ -11,6 +11,7 @@ use std::{
     io::{Read, Write},
 };
 use tar::{Archive, Builder};
+use themes::ThemeStore;
 fn get_home() -> String {
     return String::from(home_dir().unwrap().to_str().unwrap());
 }
@@ -215,7 +216,7 @@ where
                 info!("Theme successfully uploaded.");
                 up = true;
             }
-            let theme_st = load_store(name.as_str())?;
+            let theme_st = ThemeStore::load(name.as_str())?;
             if theme_st.screenshot != default_screen() {
                 info!("Publishing screenshot metadata");
                 pub_metadata(name.as_str(), "screen".into(), &theme_st.screenshot)?;
@@ -402,11 +403,11 @@ where
                 fs::remove_file(&tname)?;
                 info!("Downloading metadata.");
                 let meta = get_metadata(name.as_str())?;
-                let mut st = load_store(name.as_str())?;
+                let mut st = ThemeStore::load(name.as_str())?;
                 st.screenshot = meta.screen;
                 st.description = meta.description;
                 info!("Updating local theme store");
-                up_theme(st)?;
+                st.store()?;
                 if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script").is_ok()
                     || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar")
                         .is_ok()
@@ -438,11 +439,11 @@ where
             fs::remove_file(tname)?;
             info!("Downloading metadata.");
             let meta = get_metadata(name.as_str())?;
-            let mut st = load_store(name.as_str())?;
+            let mut st = ThemeStore::load(name.as_str())?;
             st.screenshot = meta.screen;
             st.description = meta.description;
             info!("Updating local theme store");
-            up_theme(st)?;
+            st.store()?;
             if fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/script").is_ok()
                 || fs::metadata(get_home() + "/.config/raven/themes/" + &name + "/lemonbar").is_ok()
             {
